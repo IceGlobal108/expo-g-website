@@ -1,13 +1,13 @@
 import { ReactNode } from "react";
-import { FloatingNavbar } from "@/components/ui/floating-navbar";
-import { BackgroundBeams } from "@/components/ui/background-effects";
+import { adminNavLinks } from "@/data/admin";
 import { Badge } from "@/components/ui/badge";
 import AdminSidebar, { type AdminSectionLink } from "@/components/admin/AdminSidebar";
+import AdminNavbar from "@/components/admin/AdminNavbar";
 
 interface AdminLayoutProps {
   title?: string;
   description?: string;
-  navItems: { name: string; href: string }[];
+  navItems?: { name: string; href: string }[];
   sections: AdminSectionLink[];
   children: ReactNode;
 }
@@ -19,15 +19,14 @@ interface AdminLayoutProps {
 const AdminLayout = ({
   title = "Admin Control Center",
   description = "Manage every section of the experience from one place.",
-  navItems,
+  navItems = adminNavLinks,
   sections,
   children,
 }: AdminLayoutProps) => {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <FloatingNavbar navItems={navItems} />
-      <section className="relative pt-28 md:pt-32 pb-16 md:pb-8">
-        <BackgroundBeams className="z-0" />
+      <AdminNavbar items={navItems} />
+      <section className="relative pt-20 md:pt-24 pb-16 md:pb-8">
         <div className="container-custom relative z-10 max-w-6xl mx-auto space-y-6">
           <div className="text-center space-y-3">
             <h1 className="text-4xl md:text-5xl font-display font-bold">{title}</h1>

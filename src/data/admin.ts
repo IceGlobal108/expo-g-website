@@ -6,6 +6,15 @@ export const adminNav = [
   { key: "settings", label: "Settings" },
 ];
 
+export const adminNavLinks = [
+  { name: "Dashboard", href: "/admin" },
+  { name: "Gallery", href: "/admin/gallery" },
+  { name: "Content", href: "/admin#content" },
+  { name: "Users", href: "/admin#users" },
+  { name: "Settings", href: "/admin#settings" },
+  { name: "Logout", href: "/admin/login" },
+];
+
 export const adminStats = [
   { label: "Published sections", value: 16, delta: "+2 this week" },
   { label: "Drafts", value: 4, delta: "2 ready to review" },

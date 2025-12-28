@@ -24,6 +24,7 @@ import NewHome from "./pages/NewHome";
 import AdminLogin from "./pages/AdminLogin";
 import AdminGuard from "./components/auth/AdminGuard";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminGallery from "./pages/AdminGallery";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,14 @@ const App = () => (
             element={
               <AdminGuard>
                 <AdminDashboard />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/gallery"
+            element={
+              <AdminGuard>
+                <AdminGallery />
               </AdminGuard>
             }
           />

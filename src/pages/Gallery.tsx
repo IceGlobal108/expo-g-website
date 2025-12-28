@@ -1,16 +1,28 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FloatingNavbar } from "@/components/ui/floating-navbar";
 import { BackgroundBeams } from "@/components/ui/background-effects";
 import Footer from "@/components/Footer";
 import { navItems } from "@/data/expo-data";
-import { galleryItems, galleryCategories, galleryYears } from "@/data/gallery-items";
+import { galleryItems as fallbackGalleryItems, GalleryItem } from "@/data/gallery-items";
 import { cn } from "@/lib/utils";
-import { Search, Filter, X, ChevronDown, Loader2 } from "lucide-react";
+import { Search, Filter, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const ITEMS_PER_PAGE = 24;
+
+type GalleryResponse = {
+  data: GalleryItem[];
+  pagination?: { page: number; pageSize: number; total: number; totalPages: number };
+  filters?: {
+    years: string[];
+    categories: string[];
+    tags: string[];
+    applied: { year: string | null; category: string | null; search: string | null; tag: string | null };
+  };
+};
 
 // Lazy loaded image component
 const LazyImage = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
@@ -62,79 +74,109 @@ const LazyImage = ({ src, alt, className }: { src: string; alt: string; classNam
 };
 
 const Gallery = () => {
-  const [selectedYear, setSelectedYear] = useState("All Years");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [items, setItems] = useState<GalleryItem[]>(fallbackGalleryItems.slice(0, ITEMS_PER_PAGE));
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(fallbackGalleryItems.length);
+  const [years, setYears] = useState<string[]>([
+    "All Years",
+    ...Array.from(new Set(fallbackGalleryItems.map((item) => item.year))).sort((a, b) => Number(b) - Number(a)),
+  ]);
+  const [categories, setCategories] = useState<string[]>(["All", ...new Set(fallbackGalleryItems.map((item) => item.category))]);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  
-  const years = galleryYears;
-  const categories = galleryCategories;
-  const MIN_INFINITE_ITEMS = 200;
+  const [fallbackMode, setFallbackMode] = useState(false);
 
-  // Filter images
-  const filteredImages = useMemo(() => {
-    return galleryItems.filter((item) => {
-      const matchesYear = selectedYear === "All Years" || item.year === selectedYear;
-      const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
-      const matchesSearch = 
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.brand.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesYear && matchesCategory && matchesSearch;
-    });
-  }, [selectedYear, selectedCategory, searchQuery]);
+  const base = import.meta.env.VITE_API_BASE_URL || "";
 
-  const infinitePool = useMemo(() => {
-    if (filteredImages.length === 0) return [];
-    if (filteredImages.length >= MIN_INFINITE_ITEMS) return filteredImages;
+  const fetchPage = useCallback(
+    async (targetPage: number, reset = false) => {
+      setIsFetching(true);
+      const params = new URLSearchParams();
+      params.set("page", String(targetPage));
+      params.set("pageSize", String(ITEMS_PER_PAGE));
+      if (selectedYear) params.set("year", selectedYear);
+      if (selectedCategory) params.set("category", selectedCategory);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
 
-    const result: (typeof filteredImages[number] & { originalId?: string })[] = [];
-    let multiplier = 0;
-    while (result.length < MIN_INFINITE_ITEMS) {
-      filteredImages.forEach((item, idx) => {
-        if (result.length >= MIN_INFINITE_ITEMS) return;
-        result.push({
-          ...item,
-          originalId: item.id,
-          id: `${item.id}-loop-${multiplier}-${idx}`,
-        });
-      });
-      multiplier += 1;
-    }
-    return result;
-  }, [filteredImages]);
+      try {
+        const res = await fetch(`${base}/gallery?${params.toString()}`);
+        if (!res.ok) throw new Error("Gallery fetch failed");
+        const data = (await res.json()) as GalleryResponse;
+        const nextItems = data.data ?? [];
+        if (reset) {
+          setItems(nextItems.length ? nextItems : fallbackGalleryItems.slice(0, ITEMS_PER_PAGE));
+        } else {
+          setItems((prev) => [...prev, ...nextItems]);
+        }
+        setFallbackMode(!nextItems.length);
+        setPage(targetPage);
+        setTotalPages(data.pagination?.totalPages ?? 1);
+        setTotal(data.pagination?.total ?? nextItems.length);
+        setYears(["All Years", ...(data.filters?.years || [])]);
+        setCategories(["All", ...(data.filters?.categories || [])]);
+      } catch {
+        if (reset) {
+          setItems(fallbackGalleryItems.slice(0, ITEMS_PER_PAGE));
+          setTotal(fallbackGalleryItems.length);
+          setTotalPages(Math.ceil(fallbackGalleryItems.length / ITEMS_PER_PAGE));
+          setYears([
+            "All Years",
+            ...Array.from(new Set(fallbackGalleryItems.map((item) => item.year))).sort((a, b) => Number(b) - Number(a)),
+          ]);
+          setCategories(["All", ...new Set(fallbackGalleryItems.map((item) => item.category))]);
+          setFallbackMode(true);
+        }
+      } finally {
+        setIsFetching(false);
+      }
+    },
+    [base, selectedYear, selectedCategory, searchQuery]
+  );
 
-  // Get displayed images
-  const displayedImages = useMemo(() => {
-    return infinitePool.slice(0, displayCount);
-  }, [infinitePool, displayCount]);
-
-  const hasMore = displayCount < infinitePool.length;
-
-  // Reset display count when filters change
   useEffect(() => {
-    setDisplayCount(ITEMS_PER_PAGE);
-  }, [selectedYear, selectedCategory, searchQuery]);
+    fetchPage(1, true);
+  }, [fetchPage]);
 
-  // Load more function
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      fetchPage(1, true);
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [selectedYear, selectedCategory, searchQuery, fetchPage]);
+
+  const hasMore = page < totalPages;
+
   const loadMore = useCallback(() => {
-    if (isLoading || !hasMore) return;
-
+    if (isLoading || isFetching) return;
+    // In fallback mode, simulate endless feed by looping fallback items with unique ids
+    if (fallbackMode) {
+      setIsLoading(true);
+      setTimeout(() => {
+        const looped = fallbackGalleryItems.map((item, idx) => ({
+          ...item,
+          id: `${item.id}-loop-${page}-${idx}`,
+        }));
+        setItems((prev) => [...prev, ...looped]);
+        setPage((prev) => prev + 1);
+        setIsLoading(false);
+      }, 200);
+      return;
+    }
+    if (!hasMore) return;
     setIsLoading(true);
-    // Simulate network delay for smoother UX
-    setTimeout(() => {
-      setDisplayCount((prev) => Math.min(prev + ITEMS_PER_PAGE, infinitePool.length));
-      setIsLoading(false);
-    }, 300);
-  }, [isLoading, hasMore, infinitePool.length]);
+    fetchPage(page + 1, false).finally(() => setIsLoading(false));
+  }, [fallbackMode, fetchPage, hasMore, isFetching, isLoading, page]);
 
-  // Intersection Observer for infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && hasMore && !isLoading) {
+        if (entry.isIntersecting && hasMore && !isLoading && !isFetching) {
           loadMore();
         }
       },
@@ -146,7 +188,7 @@ const Gallery = () => {
     }
 
     return () => observer.disconnect();
-  }, [hasMore, isLoading, loadMore]);
+  }, [hasMore, isLoading, isFetching, loadMore]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -174,133 +216,87 @@ const Gallery = () => {
       </section>
 
       {/* Filters Section */}
-      <section className="sticky top-20 z-30 py-4 bg-background/80 backdrop-blur-xl border-b border-border">
+      <section className="py-4 bg-background">
         <div className="container-custom">
-          <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search by title or brand..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-4 top-1/2 -translate-y-1/2"
-                >
-                  <X className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                </button>
-              )}
-            </div>
-
-            {/* Results Count */}
-            <div className="hidden md:block text-sm text-muted-foreground">
-              Showing {displayedImages.length} of {infinitePool.length} images
-            </div>
-
-            {/* Filter Chips - Desktop */}
-            <div className="hidden md:flex items-center gap-2">
-              {/* Year Filter */}
-              <div className="relative">
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="appearance-none px-4 py-2.5 pr-10 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:border-primary cursor-pointer"
-                >
-                  {years.map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <div className="rounded-2xl border border-border/70 bg-card/80 shadow-lg shadow-primary/5 p-4 md:p-5">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Filter className="w-4 h-4" />
+                  Refine gallery
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                    {items.length} / {total}
+                  </span>
+                </div>
+                <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Page {page} of {totalPages}</span>
+                </div>
               </div>
 
-              {/* Category Chips */}
-              <div className="flex gap-2">
-                {categories.map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => setSelectedCategory(category)}
-                    className={cn(
-                      "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300",
-                      selectedCategory === category
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-card border border-border text-muted-foreground hover:text-foreground hover:border-primary/50"
-                    )}
-                  >
-                    {category}
-                  </button>
-                ))}
+              <div className="grid gap-3 md:grid-cols-[1.5fr,1fr,1fr] lg:grid-cols-[2fr,1fr,1fr] items-center">
+                {/* Search */}
+                <div className="relative w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search titles, brands, tags..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-background/70 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                    >
+                      <X className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Year */}
+                <Select
+                  value={selectedYear ?? "All Years"}
+                  onValueChange={(v) => setSelectedYear(v === "All Years" ? null : v)}
+                >
+                  <SelectTrigger className="w-full rounded-xl bg-background/70 border-border text-foreground">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent align="start" className="border-border bg-card">
+                    {years.map((year) => (
+                      <SelectItem key={year} value={year}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Category */}
+                <Select
+                  value={selectedCategory ?? "All"}
+                  onValueChange={(v) => setSelectedCategory(v === "All" ? null : v)}
+                >
+                  <SelectTrigger className="w-full rounded-xl bg-background/70 border-border text-foreground">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent align="start" className="border-border bg-card max-h-64">
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-
-            {/* Mobile Filter Button */}
-            <Button
-              variant="outline"
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="md:hidden"
-            >
-              <Filter className="w-4 h-4 mr-2" />
-              Filters ({filteredImages.length})
-            </Button>
           </div>
-
-          {/* Mobile Filters Dropdown */}
-          <AnimatePresence>
-            {isFilterOpen && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="md:hidden mt-4 space-y-4 overflow-hidden"
-              >
-                <div className="flex flex-wrap gap-2">
-                  {years.map((year) => (
-                    <button
-                      key={year}
-                      onClick={() => setSelectedYear(year)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-sm transition-all",
-                        selectedYear === year
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-card border border-border text-muted-foreground"
-                      )}
-                    >
-                      {year}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map((category) => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-sm transition-all",
-                        selectedCategory === category
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-card border border-border text-muted-foreground"
-                      )}
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </section>
 
       {/* Gallery Grid */}
       <section className="section-padding">
         <div className="container-custom">
-          {filteredImages.length === 0 ? (
+          {items.length === 0 ? (
             <div className="text-center py-20">
               <p className="text-muted-foreground text-lg">
                 No images found matching your criteria.
@@ -308,8 +304,8 @@ const Gallery = () => {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setSelectedYear("All Years");
-                  setSelectedCategory("All");
+                  setSelectedYear(null);
+                  setSelectedCategory(null);
                   setSearchQuery("");
                 }}
                 className="mt-4"
@@ -320,7 +316,7 @@ const Gallery = () => {
           ) : (
             <>
               <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                {displayedImages.map((item, index) => (
+                {items.map((item, index) => (
                   <motion.div
                     key={item.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -350,14 +346,12 @@ const Gallery = () => {
 
               {/* Infinite Scroll Trigger */}
               <div ref={loadMoreRef} className="mt-12 text-center">
-                {isLoading && (
+                {(isLoading || isFetching) && (
                   <div className="flex items-center justify-center gap-3 py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                     <span className="text-muted-foreground">Loading more images...</span>
                   </div>
                 )}
-
-                {/* Endless feel by looping the dataset; no end message */}
               </div>
             </>
           )}

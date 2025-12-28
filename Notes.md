@@ -29,3 +29,34 @@
 15) Founders of ICE 1.0 (offline expo platform) & ICE 2.0 (online hybrid expo platform - IGE & IGN)  and photos -  photos of Founder - Aishwarya and Vijay - and followed by Niyathi and Vishnu (Review the moment) 
 
 16) Co-founding team of ICE 2.0 (IGE & IGN - Online Exhibition Platform) and photos - Priyanshi Jha (IGE & IGN)  Sanjay Shah (IGE & IGN), Rohit Kumar (IGE), RITU ANAND (IGN) - (Review the moment)
+
+
+
+All home page sections (in render order from NewHome.tsx):
+
+Floating navbar: FloatingNavbar.
+Hero parallax: HeroParallax with optional heroContent.
+Review moments: ReviewMomentsSection (infographics/photos).
+Brand highlights: BrandHighlightsSection.
+Celebrity spotlight: CelebritySpotlightSection.
+Seller signals/testimonials: SellerSignalsSection.
+Buyer voices/testimonials: BuyerVoicesSection.
+Timeline (Legacy in Motion): StickyScrollReveal block.
+Entrance arches: EntranceArchesSection.
+Stalls mosaic (brands/sellers): StallsMosaicSection.
+Buyer mosaic (20M buyers): StallsMosaicSection second instance.
+VVIP spotlight: VvipSpotlightSection.
+Founders spotlight: FoundersSpotlightSection.
+Co-founders: CoFoundersSection.
+Counting stats strip: CountingSection.
+Dual CTAs (sellers/buyers): DualCtaSection.
+Footer: Footer.
+Reference overview: NEW_HOME_SECTIONS.md.
+
+
+
+
+
+
+Auto con
+

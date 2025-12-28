@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { navItems as staticNav } from "@/data/expo-data";
 import { AlertCircle, Plus, Save, Trash2, RotateCcw } from "lucide-react";
+import { adminNavLinks } from "@/data/admin";
 
 const makeId = () => Math.random().toString(36).slice(2, 10);
 
@@ -2192,7 +2193,7 @@ const AdminDashboard = () => {
 
   return (
     <AdminLayout
-      navItems={[...staticNav, { name: "Admin", href: "/admin" }]}
+      navItems={adminNavLinks}
       sections={sections}
       title="Admin Dashboard"
       description="Curate every section of the experience with a clean, modular editor."

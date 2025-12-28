@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { FloatingNavbar } from "@/components/ui/floating-navbar";
 import { BackgroundBeams } from "@/components/ui/background-effects";
 import Footer from "@/components/Footer";
 import { navItems } from "@/data/expo-data";
-import { galleryItems, GalleryComment } from "@/data/gallery-items";
+import { galleryItems, type GalleryItem, type GalleryComment } from "@/data/gallery-items";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,34 +23,64 @@ const sectionSlug = (text: string, fallback: string) =>
 
 const GalleryDetail = () => {
   const { id } = useParams();
-  const item = useMemo(() => galleryItems.find((entry) => entry.id === id), [id]);
   const { toast } = useToast();
 
+  const [item, setItem] = useState<GalleryItem | null>(null);
   const [comments, setComments] = useState<GalleryComment[]>([]);
-  const [likes, setLikes] = useState(item?.likes ?? 0);
+  const [likes, setLikes] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [form, setForm] = useState({ author: "", message: "" });
   const commentsRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const { scrollYProgress } = useScroll();
   const heroScale = useTransform(scrollYProgress, [0, 0.25], [1.08, 1]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.4], [1, 0.85]);
 
   useEffect(() => {
-    if (!item) return;
-    const stored = localStorage.getItem(getCommentStorageKey(item.id));
-    setComments(stored ? JSON.parse(stored) : item.comments);
-    setLikes(item.likes);
-    setIsLiked(false);
-  }, [item]);
+    if (!id) return;
+    const base = import.meta.env.VITE_API_BASE_URL || "";
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`${base}/gallery/${id}`);
+        if (!res.ok) throw new Error("Gallery detail fetch failed");
+        const data = (await res.json()) as GalleryItem;
+        setItem(data);
+        const stored = localStorage.getItem(getCommentStorageKey(data.id));
+        setComments(stored ? JSON.parse(stored) : data.comments || []);
+        setLikes(data.likes ?? 0);
+        setIsLiked(false);
+      } catch {
+        const fallback = galleryItems.find((entry) => entry.id === id) || null;
+        setItem(fallback);
+        if (fallback) {
+          const stored = localStorage.getItem(getCommentStorageKey(fallback.id));
+          setComments(stored ? JSON.parse(stored) : fallback.comments || []);
+          setLikes(fallback.likes ?? 0);
+        } else {
+          setComments([]);
+          setLikes(0);
+        }
+        setIsLiked(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [id]);
 
   useEffect(() => {
     if (!item) return;
     localStorage.setItem(getCommentStorageKey(item.id), JSON.stringify(comments));
   }, [comments, item]);
 
-  if (!item) {
+  if (!item && !isLoading) {
     return <NotFound />;
+  }
+
+  if (!item) {
+    return null;
   }
 
   const handleLike = () => {
