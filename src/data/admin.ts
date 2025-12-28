@@ -10,6 +10,7 @@ export const adminNavLinks = [
   { name: "Dashboard", href: "/admin" },
   { name: "Gallery", href: "/admin/gallery" },
   { name: "Brands", href: "/admin/brands" },
+  { name: "Buyers", href: "/admin/buyers" },
   { name: "Sellers", href: "/admin/sellers" },
   { name: "Content", href: "/admin#content" },
   { name: "Users", href: "/admin#users" },

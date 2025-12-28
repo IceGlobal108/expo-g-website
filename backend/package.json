@@ -16,6 +16,7 @@
     "seed:celebrities": "tsx scripts/seed-celebrities.ts",
     "seed:sellers": "tsx scripts/seed-sellers.ts",
     "seed:sellers:list": "tsx scripts/seed-sellers-list.ts",
+    "seed:buyers:list": "tsx scripts/seed-buyers-list.ts",
     "seed:buyers": "tsx scripts/seed-buyers.ts",
     "seed:gallery": "tsx scripts/seed-gallery.ts",
     "seed:timeline": "tsx scripts/seed-timeline.ts",

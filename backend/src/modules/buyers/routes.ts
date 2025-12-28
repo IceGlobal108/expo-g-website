@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { ObjectId } from "mongodb";
 import { getDb } from "../../db/mongo";
 
 const buyerSchema = z.object({
@@ -12,6 +13,22 @@ const buyerSchema = z.object({
   visits: z.string().default(""),
   image: z.string().url(),
   href: z.string().default(""),
+  detail: z
+    .object({
+      headline: z.string().optional(),
+      summary: z.string().optional(),
+      heroImage: z.string().url().optional(),
+      highlights: z
+        .array(z.object({ title: z.string(), body: z.string() }))
+        .default([]),
+      metrics: z
+        .array(z.object({ label: z.string(), value: z.string() }))
+        .default([]),
+      pullQuote: z.string().optional(),
+      ctaLabel: z.string().optional(),
+      ctaHref: z.string().optional(),
+    })
+    .optional(),
 });
 
 const payloadSchema = z.object({
@@ -21,6 +38,19 @@ const payloadSchema = z.object({
   ctaLabel: z.string().default(""),
   ctaHref: z.string().default(""),
   buyers: z.array(buyerSchema),
+});
+
+const listQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((v) => Number(v))
+    .catch(24)
+    .optional(),
+  search: z.string().optional(),
+  city: z.string().optional(),
+  segment: z.string().optional(),
 });
 
 export default async function buyersRoutes(app: FastifyInstance) {
@@ -48,6 +78,46 @@ export default async function buyersRoutes(app: FastifyInstance) {
       ctaHref: stored.ctaHref ?? "",
       buyers: stored.buyers ?? [],
     };
+  });
+
+  app.get("/buyers/list", async (request) => {
+    const db = await getDb();
+    const col = db.collection<z.infer<typeof buyerSchema>>("buyers_list");
+    const parsed = listQuerySchema.safeParse(request.query);
+    const query = parsed.success ? parsed.data : { limit: 24 };
+    const filter: Record<string, unknown> = {};
+    if (query.search) {
+      filter.$or = [
+        { name: { $regex: query.search, $options: "i" } },
+        { city: { $regex: query.search, $options: "i" } },
+        { segment: { $regex: query.search, $options: "i" } },
+        { quote: { $regex: query.search, $options: "i" } },
+      ];
+    }
+    if (query.city) filter.city = query.city;
+    if (query.segment) filter.segment = query.segment;
+    if (query.cursor) {
+      try {
+        filter._id = { $gt: new ObjectId(query.cursor) };
+      } catch {
+        // ignore bad cursor
+      }
+    }
+    const limit = Math.min(Math.max(query.limit ?? 24, 1), 200);
+    const data = await col.find(filter).sort({ _id: 1 }).limit(limit).toArray();
+    const next = data.length === limit ? data[data.length - 1]._id?.toString() : null;
+    const cities = await col.distinct("city");
+    const segments = await col.distinct("segment");
+    return { data, cursor: { next, limit }, filters: { cities, segments } };
+  });
+
+  app.get("/buyers/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const db = await getDb();
+    const col = db.collection<z.infer<typeof buyerSchema>>("buyers_list");
+    const item = await col.findOne({ id });
+    if (!item) return reply.code(404).send({ message: "Buyer not found" });
+    return item;
   });
 
   app.put(
@@ -78,6 +148,42 @@ export default async function buyersRoutes(app: FastifyInstance) {
       );
       request.log.info("buyers.update success");
       return parse.data;
+    }
+  );
+
+  app.put(
+    "/buyers/:id",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parse = buyerSchema.safeParse({ ...(request.body as object), id });
+      if (!parse.success) {
+        request.log.warn({ issues: parse.error.issues }, "buyers.list.update validation failed");
+        return reply.code(400).send({ message: "Invalid payload" });
+      }
+      const db = await getDb();
+      const col = db.collection<z.infer<typeof buyerSchema>>("buyers_list");
+      await col.updateOne(
+        { id },
+        { $set: { ...parse.data, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+        { upsert: true }
+      );
+      request.log.info({ id }, "buyers.list upserted");
+      return parse.data;
+    }
+  );
+
+  app.delete(
+    "/buyers/:id",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const db = await getDb();
+      const col = db.collection<z.infer<typeof buyerSchema>>("buyers_list");
+      const res = await col.deleteOne({ id });
+      if (!res.deletedCount) return reply.code(404).send({ message: "Buyer not found" });
+      request.log.info({ id }, "buyers.list deleted");
+      return { message: "Deleted", id };
     }
   );
 
