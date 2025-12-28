@@ -1,0 +1,46 @@
+import { FastifyInstance } from "fastify";
+import healthRoutes from "./health/routes";
+import authRoutes from "./auth/routes";
+import sectionsRoutes from "./sections/routes";
+import galleryRoutes from "./gallery/routes";
+import metricsRoutes from "./metrics/routes";
+import heroRoutes from "./hero/routes";
+import reviewRoutes from "./review/routes";
+import brandsRoutes from "./brands/routes";
+import celebritiesRoutes from "./celebrities/routes";
+import sellersRoutes from "./sellers/routes";
+import buyersRoutes from "./buyers/routes";
+import timelineRoutes from "./timeline/routes";
+import archesRoutes from "./arches/routes";
+import stallsRoutes from "./stalls/routes";
+import buyerMosaicRoutes from "./buyer-mosaic/routes";
+import vvipRoutes from "./vvip/routes";
+import foundersRoutes from "./founders/routes";
+import cofoundersRoutes from "./cofounders/routes";
+import countsRoutes from "./counts/routes";
+import dualCtaRoutes from "./dual-cta/routes";
+import footerRoutes from "./footer/routes";
+
+export default async function registerRoutes(app: FastifyInstance) {
+  await app.register(healthRoutes);
+  await app.register(authRoutes);
+  await app.register(sectionsRoutes);
+  await app.register(galleryRoutes);
+  await app.register(metricsRoutes);
+  await app.register(heroRoutes);
+  await app.register(reviewRoutes);
+  await app.register(brandsRoutes);
+  await app.register(celebritiesRoutes);
+  await app.register(sellersRoutes);
+  await app.register(buyersRoutes);
+  await app.register(timelineRoutes);
+  await app.register(archesRoutes);
+  await app.register(stallsRoutes);
+  await app.register(buyerMosaicRoutes);
+  await app.register(vvipRoutes);
+  await app.register(foundersRoutes);
+  await app.register(cofoundersRoutes);
+  await app.register(countsRoutes);
+  await app.register(dualCtaRoutes);
+  await app.register(footerRoutes);
+}

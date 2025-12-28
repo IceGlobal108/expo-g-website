@@ -1,0 +1,81 @@
+import { useEffect } from "react";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import Index from "./pages/Index";
+import Gallery from "./pages/Gallery";
+import GalleryDetail from "./pages/GalleryDetail";
+import BrandDetail from "./pages/BrandDetail";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Cookies from "./pages/Cookies";
+import Partner from "./pages/Partner";
+import Sponsor from "./pages/Sponsor";
+import BrandGuidelines from "./pages/BrandGuidelines";
+import TestimonialsPage from "./pages/TestimonialsPage";
+import Feedback from "./pages/Feedback";
+import TestPage from "./pages/TestPage";
+import NotFound from "./pages/NotFound";
+import NewHome from "./pages/NewHome";
+import AdminLogin from "./pages/AdminLogin";
+import AdminGuard from "./components/auth/AdminGuard";
+import AdminDashboard from "./pages/AdminDashboard";
+
+const queryClient = new QueryClient();
+
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [pathname]);
+
+  return null;
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <ScrollToTop />
+        <Routes>
+          <Route path="/" element={<NewHome />} />
+          <Route path="/new-home" element={<Index />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminGuard>
+                <AdminDashboard />
+              </AdminGuard>
+            }
+          />
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/partner" element={<Partner />} />
+          <Route path="/sponsor" element={<Sponsor />} />
+          <Route path="/brand-guidelines" element={<BrandGuidelines />} />
+          <Route path="/testimonials" element={<TestimonialsPage />} />
+          <Route path="/feedback" element={<Feedback />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/cookies" element={<Cookies />} />
+          <Route path="/test" element={<TestPage />} />
+          <Route path="/gallery" element={<Gallery />} />
+          <Route path="/gallery/:id" element={<GalleryDetail />} />
+          <Route path="/brands/:slug" element={<BrandDetail />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;
