@@ -33,6 +33,12 @@ import AdminSellers from "./pages/AdminSellers";
 import Buyers from "./pages/Buyers";
 import BuyerDetail from "./pages/BuyerDetail";
 import AdminBuyers from "./pages/AdminBuyers";
+import Founders from "./pages/Founders";
+import FounderDetail from "./pages/FounderDetail";
+import AdminFounders from "./pages/AdminFounders";
+import Cofounders from "./pages/Cofounders";
+import CofounderDetail from "./pages/CofounderDetail";
+import AdminCofounders from "./pages/AdminCofounders";
 
 const queryClient = new QueryClient();
 
@@ -75,6 +81,22 @@ const App = () => (
             }
           />
           <Route
+            path="/admin/founders"
+            element={
+              <AdminGuard>
+                <AdminFounders />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/cofounders"
+            element={
+              <AdminGuard>
+                <AdminCofounders />
+              </AdminGuard>
+            }
+          />
+          <Route
             path="/admin/buyers"
             element={
               <AdminGuard>
@@ -102,6 +124,10 @@ const App = () => (
           <Route path="/partner" element={<Partner />} />
           <Route path="/sponsor" element={<Sponsor />} />
           <Route path="/brands" element={<Brands />} />
+          <Route path="/founders" element={<Founders />} />
+          <Route path="/founders/:id" element={<FounderDetail />} />
+          <Route path="/cofounders" element={<Cofounders />} />
+          <Route path="/cofounders/:id" element={<CofounderDetail />} />
           <Route path="/buyers" element={<Buyers />} />
           <Route path="/buyers/:id" element={<BuyerDetail />} />
           <Route path="/sellers" element={<Sellers />} />

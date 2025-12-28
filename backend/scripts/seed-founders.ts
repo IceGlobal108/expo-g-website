@@ -16,6 +16,7 @@ const defaultFounders = {
       image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&h=800&fit=crop",
       highlight: "Architected the inaugural expo arches and main stage playbook that still anchors ICE.",
       href: "/founders/aishwarya",
+      social: { linkedin: "https://linkedin.com/in/aishwarya" },
     },
     {
       name: "Vijay",

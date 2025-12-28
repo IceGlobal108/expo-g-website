@@ -16,6 +16,7 @@ const defaultCoFounders = {
       image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&h=800&fit=crop",
       highlight: "Bridges on-ground playbooks with digital programming for both IGE and IGN.",
       href: "/cofounders/priyanshi-jha",
+      social: { linkedin: "https://linkedin.com/in/priyanshijha" },
     },
     {
       name: "Sanjay Shah",
@@ -25,6 +26,7 @@ const defaultCoFounders = {
       image: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&h=800&fit=crop",
       highlight: "Scaled the hybrid network—brand sponsors, city partners, and streaming collaborators.",
       href: "/cofounders/sanjay-shah",
+      social: { linkedin: "https://linkedin.com/in/sanjayshah" },
     },
     {
       name: "Rohit Kumar",
@@ -34,6 +36,7 @@ const defaultCoFounders = {
       image: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=600&h=800&fit=crop",
       highlight: "Built the broadcast lanes for IGE with creator pipelines and live ops.",
       href: "/cofounders/rohit-kumar",
+      social: { linkedin: "https://linkedin.com/in/rohitkumar" },
     },
     {
       name: "Ritu Anand",
@@ -43,6 +46,7 @@ const defaultCoFounders = {
       image: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=600&h=800&fit=crop",
       highlight: "Grew IGN’s community channels and buyer programs for digital-first drops.",
       href: "/cofounders/ritu-anand",
+      social: { linkedin: "https://linkedin.com/in/rituanand" },
     },
   ],
 };
