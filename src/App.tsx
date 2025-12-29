@@ -54,6 +54,9 @@ import AdminSponsor from "./pages/AdminSponsor";
 import AdminTerms from "./pages/AdminTerms";
 import AdminTestimonials from "./pages/AdminTestimonials";
 import AdminForms from "./pages/AdminForms";
+import SubmitSuccess from "./pages/SubmitSuccess";
+import SubmitError from "./pages/SubmitError";
+import AdminSubmitSuccess from "./pages/AdminSubmitSuccess";
 
 const queryClient = new QueryClient();
 
@@ -208,6 +211,14 @@ const App = () => (
             }
           />
           <Route
+            path="/admin/submit-success"
+            element={
+              <AdminGuard>
+                <AdminSubmitSuccess />
+              </AdminGuard>
+            }
+          />
+          <Route
             path="/admin/teams"
             element={
               <AdminGuard>
@@ -256,6 +267,8 @@ const App = () => (
           <Route path="/brand-guidelines" element={<BrandGuidelines />} />
           <Route path="/testimonials" element={<TestimonialsPage />} />
           <Route path="/feedback" element={<Feedback />} />
+          <Route path="/submit-success" element={<SubmitSuccess />} />
+          <Route path="/submit-error" element={<SubmitError />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/cookies" element={<Cookies />} />

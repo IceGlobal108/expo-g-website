@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FloatingNavbar } from "@/components/ui/floating-navbar";
 import { BackgroundBeams } from "@/components/ui/background-effects";
@@ -75,6 +76,7 @@ const Contact = () => {
     { id: "company", label: "Company", type: "text", required: false },
     { id: "message", label: "Project details", type: "textarea", required: true },
   ]);
+  const navigate = useNavigate();
   const [content, setContent] = useState<ContactContent>(defaultContent);
 
   const handleChange =
@@ -95,9 +97,9 @@ const Contact = () => {
       })
       .then(() => {
         setForm({});
-        alert(content.form.successMessage);
+        navigate("/submit-success", { state: { message: content.form.successMessage } });
       })
-      .catch(() => alert("Unable to send right now. Please try again."));
+      .catch(() => navigate("/submit-error", { state: { message: "Unable to send right now. Please try again." } }));
   };
 
   const base = import.meta.env.VITE_API_BASE_URL || "";

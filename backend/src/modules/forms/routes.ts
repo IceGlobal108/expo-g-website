@@ -7,6 +7,61 @@ const baseFields = [
   { id: "email", label: "Email", type: "email", required: true },
 ];
 
+const defaultDefinitions = [
+  {
+    slug: "contact",
+    title: "Contact",
+    description: "General inquiry",
+    fields: [
+      ...baseFields,
+      { id: "company", label: "Company", type: "text", required: false },
+      { id: "message", label: "Project details", type: "textarea", required: true },
+    ],
+  },
+  {
+    slug: "partner",
+    title: "Partner inquiry",
+    description: "Partnership goals",
+    fields: [
+      ...baseFields,
+      { id: "company", label: "Company", type: "text", required: false },
+      { id: "goals", label: "Goals", type: "textarea", required: true },
+    ],
+  },
+  {
+    slug: "sponsor",
+    title: "Sponsor inquiry",
+    description: "Sponsorship objectives",
+    fields: [
+      ...baseFields,
+      { id: "company", label: "Company", type: "text", required: false },
+      { id: "budget", label: "Budget range", type: "text", required: true },
+      { id: "goals", label: "Objectives", type: "textarea", required: true },
+    ],
+  },
+  {
+    slug: "brand-guidelines",
+    title: "Brand guidelines request",
+    description: "Asset request",
+    fields: [
+      ...baseFields,
+      { id: "company", label: "Company", type: "text", required: false },
+      { id: "intent", label: "Intended use", type: "textarea", required: true },
+    ],
+  },
+  {
+    slug: "feedback",
+    title: "Feedback",
+    description: "Experience feedback",
+    fields: [
+      ...baseFields,
+      { id: "role", label: "Role", type: "text", required: false },
+      { id: "rating", label: "Rating (1-5)", type: "number", required: true },
+      { id: "message", label: "Feedback", type: "textarea", required: true },
+    ],
+  },
+];
+
 const fieldSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
@@ -40,7 +95,12 @@ export default async function formsRoutes(app: FastifyInstance) {
     const db = await getDb();
     const col = db.collection("forms_definitions");
     const defs = await col.find({}, { projection: { _id: 0 } }).toArray();
-    return defs;
+    const mapped: any[] = [];
+    for (const def of defaultDefinitions) {
+      const match = defs.find((d) => d.slug === def.slug);
+      mapped.push(match || def);
+    }
+    return mapped.map((d) => ({ ...d, fields: ensureBaseFields(d.fields || []) }));
   });
 
   app.get("/forms/:slug", async (request, reply) => {
@@ -48,8 +108,9 @@ export default async function formsRoutes(app: FastifyInstance) {
     const db = await getDb();
     const col = db.collection("forms_definitions");
     const def = await col.findOne({ slug }, { projection: { _id: 0 } });
-    if (!def) return reply.code(404).send({ message: "Form not found" });
-    return def;
+    const fallback = defaultDefinitions.find((d) => d.slug === slug);
+    if (!def && !fallback) return reply.code(404).send({ message: "Form not found" });
+    return { ...(fallback || {}), ...(def || {}), fields: ensureBaseFields((def?.fields || fallback?.fields) || []) };
   });
 
   app.put(
@@ -80,9 +141,10 @@ export default async function formsRoutes(app: FastifyInstance) {
     const db = await getDb();
     const defCol = db.collection("forms_definitions");
     const def = await defCol.findOne<{ fields: z.infer<typeof fieldSchema>[] }>({ slug });
-    if (!def) return reply.code(404).send({ message: "Form not found" });
+    const fallback = defaultDefinitions.find((d) => d.slug === slug);
+    if (!def && !fallback) return reply.code(404).send({ message: "Form not found" });
 
-    const fields = ensureBaseFields(def.fields || []);
+    const fields = ensureBaseFields((def?.fields || fallback?.fields) || []);
     const body = request.body as Record<string, unknown>;
 
     // Validate required base fields

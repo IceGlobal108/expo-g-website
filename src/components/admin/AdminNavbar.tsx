@@ -29,7 +29,7 @@ const AdminNavbar = ({ items = adminNavLinks }: AdminNavbarProps) => {
     { label: "Experience", names: ["Gallery", "Gallery Detail", "Brands", "Testimonials", "About", "Contact"] },
     { label: "People", names: ["Team", "Founders", "Co-Founders"] },
     { label: "Growth", names: ["Buyers", "Sellers", "Partner", "Sponsor"] },
-    { label: "Policies", names: ["Privacy", "Cookies", "Terms", "Not Found"] },
+    { label: "Policies", names: ["Privacy", "Cookies", "Terms", "Not Found", "Submit Success"] },
     { label: "Forms", names: ["Form Builder"] },
     { label: "Session", names: ["Logout"] },
   ];

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FloatingNavbar } from "@/components/ui/floating-navbar";
 import Footer from "@/components/Footer";
 import { navItems } from "@/data/expo-data";
@@ -44,6 +45,7 @@ const Feedback = () => {
   const [content, setContent] = useState<FeedbackContent>(defaultContent);
   const [fields, setFields] = useState<Field[]>(defaultFields);
   const base = import.meta.env.VITE_API_BASE_URL || "";
+  const navigate = useNavigate();
 
   const handleChange =
     (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -59,9 +61,9 @@ const Feedback = () => {
       });
       if (!res.ok) throw new Error("Submit failed");
       setForm({});
-      alert(content.form.successMessage);
+      navigate("/submit-success", { state: { message: content.form.successMessage } });
     } catch {
-      alert("Unable to send right now. Please try again.");
+      navigate("/submit-error", { state: { message: "Unable to send right now. Please try again." } });
     }
   };
 
