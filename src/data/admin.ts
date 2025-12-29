@@ -34,6 +34,8 @@ export const adminNavLinks = [
   { name: "Templates", href: "/admin/templates" },
   { name: "Notifications", href: "/admin/notifications" },
   { name: "Users", href: "/admin/users" },
+  { name: "Comments", href: "/admin/comments" },
+  { name: "Likes", href: "/admin/likes" },
   { name: "Theme", href: "/admin/theme" },
   { name: "Profile Config", href: "/admin/profile-config" },
   { name: "Editors", href: "/admin/editors" },
@@ -113,6 +115,7 @@ export const adminNavGroups = [
     ],
   },
   { label: "Users", items: [{ name: "Users", href: "/admin/users" }] },
+  { label: "Moderation", items: [{ name: "Comments", href: "/admin/comments" }, { name: "Likes", href: "/admin/likes" }] },
   { label: "Appearance", items: [{ name: "Theme", href: "/admin/theme" }] },
   {
     label: "Home Editors",

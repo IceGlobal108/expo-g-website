@@ -67,6 +67,8 @@ import AdminNotifications from "./pages/AdminNotifications";
 import AdminHomeSections from "./pages/AdminHomeSections";
 import AdminHero from "./pages/AdminHero";
 import AdminFooter from "./pages/AdminFooter";
+import AdminComments from "./pages/AdminComments";
+import AdminLikes from "./pages/AdminLikes";
 import AdminReviews from "./pages/AdminReviews";
 import AdminEditors from "./pages/AdminEditors";
 import AdminBrandEditor from "./pages/AdminBrandEditor";
@@ -292,6 +294,22 @@ const App = () => (
             element={
               <AdminGuard>
                 <AdminUsers />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/comments"
+            element={
+              <AdminGuard>
+                <AdminComments />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/likes"
+            element={
+              <AdminGuard>
+                <AdminLikes />
               </AdminGuard>
             }
           />

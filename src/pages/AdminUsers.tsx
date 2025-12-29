@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { adminNavLinks } from "@/data/admin";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, RefreshCcw } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 
 type UserRow = {
   id?: string;
@@ -22,6 +24,8 @@ type UserRow = {
 
 const AdminUsers = () => {
   const base = import.meta.env.VITE_API_BASE_URL || "";
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [search, setSearch] = useState("");
   const [start, setStart] = useState("");
@@ -38,11 +42,18 @@ const AdminUsers = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
     });
-    if (!res.ok) {
-      localStorage.removeItem("admin_access_token");
-      localStorage.removeItem("admin_refresh_token");
-      return null;
-    }
+      if (!res.ok) {
+        if (res.status === 401) {
+          localStorage.removeItem("admin_access_token");
+          localStorage.removeItem("admin_refresh_token");
+          toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+          navigate("/admin/login", { replace: true });
+          return null;
+        }
+        localStorage.removeItem("admin_access_token");
+        localStorage.removeItem("admin_refresh_token");
+        return null;
+      }
     const tokenData = await res.json();
     if (tokenData.accessToken) {
       localStorage.setItem("admin_access_token", tokenData.accessToken);
@@ -70,6 +81,13 @@ const AdminUsers = () => {
       const res = await fetch(`${base}/admin/users?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        localStorage.removeItem("admin_access_token");
+        localStorage.removeItem("admin_refresh_token");
+        toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+        navigate("/admin/login", { replace: true });
+        return;
+      }
       if (!res.ok) throw new Error("Load failed");
       const data = await res.json();
       setUsers(reset ? data.data || [] : [...users, ...(data.data || [])]);

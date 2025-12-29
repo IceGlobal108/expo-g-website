@@ -13,6 +13,7 @@ const galleryCommentSchema = z.object({
   author: z.string().min(1),
   message: z.string().min(1),
   date: z.string().min(1),
+  hidden: z.boolean().default(false),
 });
 
 const galleryItemSchema = z.object({
@@ -63,7 +64,9 @@ type GalleryComment = z.infer<typeof galleryCommentSchema>;
 
 export default async function galleryRoutes(app: FastifyInstance) {
   const sanitizeComments = (comments?: GalleryComment[]) =>
-    (comments ?? []).map((c) => ({ id: c.id, message: c.message, date: c.date }));
+    (comments ?? [])
+      .filter((c) => !c.hidden)
+      .map((c) => ({ id: c.id, message: c.message, date: c.date }));
 
   const sanitizeItem = (item: GalleryItem) => {
     const { comments, ...rest } = item;
@@ -81,6 +84,20 @@ export default async function galleryRoutes(app: FastifyInstance) {
       .catch(10)
       .optional(),
     cursor: z.string().optional(), // base64 of { date: string; id: string }
+  });
+
+  const adminCommentsQuerySchema = z.object({
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((v) => Number(v))
+      .catch(20)
+      .optional(),
+    cursor: z.string().optional(), // base64 of { date: string; id: string }
+    itemId: z.string().optional(),
+    search: z.string().optional(),
+    start: z.string().optional(), // ISO
+    end: z.string().optional(), // ISO
   });
 
   app.get("/gallery", async (request) => {
@@ -235,6 +252,7 @@ export default async function galleryRoutes(app: FastifyInstance) {
     }
 
     pipeline.push(
+      { $match: { "comments.hidden": { $ne: true } } },
       { $sort: { "comments.dateObj": -1, "comments.id": -1 } },
       { $limit: limit },
       {
@@ -244,6 +262,7 @@ export default async function galleryRoutes(app: FastifyInstance) {
           message: "$comments.message",
           date: "$comments.date",
           author: "$comments.author",
+          hidden: "$comments.hidden",
         },
       }
     );
@@ -259,6 +278,135 @@ export default async function galleryRoutes(app: FastifyInstance) {
 
     return { data: sanitized, cursor: { next, limit } };
   });
+
+  app.get("/admin/comments", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const db = await getDb();
+    const col = db.collection<GalleryItem>("gallery");
+    const parsed = adminCommentsQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: "Invalid query" });
+    }
+    const limit = Math.min(Math.max(parsed.data.limit ?? 20, 1), 100);
+    let cursorDate: Date | null = null;
+    let cursorId: string | null = null;
+    if (parsed.data.cursor) {
+      try {
+        const decoded = JSON.parse(Buffer.from(parsed.data.cursor, "base64").toString("utf8"));
+        cursorDate = decoded.date ? new Date(decoded.date) : null;
+        cursorId = decoded.id ?? null;
+      } catch {
+        // ignore malformed cursor
+      }
+    }
+
+    const pipeline: any[] = [{ $unwind: "$comments" }];
+
+    const match: any = {};
+    if (parsed.data.itemId) match.id = parsed.data.itemId;
+    if (parsed.data.search) {
+      match["comments.message"] = { $regex: parsed.data.search, $options: "i" };
+    }
+    if (parsed.data.start || parsed.data.end) {
+      const range: any = {};
+      if (parsed.data.start) range.$gte = new Date(parsed.data.start);
+      if (parsed.data.end) range.$lte = new Date(parsed.data.end);
+      pipeline.push({ $addFields: { "comments.dateObj": { $toDate: "$comments.date" } } });
+      pipeline.push({ $match: { "comments.dateObj": range } });
+    } else {
+      pipeline.push({ $addFields: { "comments.dateObj": { $toDate: "$comments.date" } } });
+    }
+
+    if (Object.keys(match).length) pipeline.push({ $match: match });
+
+    if (cursorDate && cursorId) {
+      pipeline.push({
+        $match: {
+          $expr: {
+            $or: [
+              { $lt: ["$comments.dateObj", cursorDate] },
+              { $and: [{ $eq: ["$comments.dateObj", cursorDate] }, { $lt: ["$comments.id", cursorId] }] },
+            ],
+          },
+        },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { "comments.dateObj": -1, "comments.id": -1 } },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 0,
+          itemId: "$id",
+          itemTitle: "$title",
+          id: "$comments.id",
+          message: "$comments.message",
+          date: "$comments.date",
+          author: "$comments.author",
+          hidden: "$comments.hidden",
+        },
+      }
+    );
+
+    const docs = await col.aggregate(pipeline).toArray();
+    let next: string | null = null;
+    if (docs.length === limit) {
+      const last = docs[docs.length - 1];
+      next = Buffer.from(JSON.stringify({ date: last.date, id: last.id })).toString("base64");
+    }
+
+    return { data: docs, cursor: { next, limit } };
+  });
+
+  app.patch(
+    "/admin/comments/:id/hide",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { hidden } = (request.body as any) ?? {};
+      const flag = hidden === false ? false : true;
+      const db = await getDb();
+      const col = db.collection<GalleryItem>("gallery");
+      const res = await col.updateOne(
+        { "comments.id": id },
+        { $set: { "comments.$[c].hidden": flag } },
+        { arrayFilters: [{ "c.id": id }] }
+      );
+      if (!res.matchedCount) return reply.code(404).send({ message: "Comment not found" });
+      return { id, hidden: flag };
+    }
+  );
+
+  app.delete(
+    "/admin/comments/:id",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const db = await getDb();
+      const col = db.collection<GalleryItem>("gallery");
+      const res = await col.updateOne({ "comments.id": id }, { $pull: { comments: { id } } });
+      if (!res.matchedCount) return reply.code(404).send({ message: "Comment not found" });
+      return { id, deleted: true };
+    }
+  );
+
+  app.get(
+    "/admin/gallery/:id/likes",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = commentsQuerySchema.safeParse(request.query);
+      if (!parsed.success) return reply.code(400).send({ message: "Invalid query" });
+      const limit = Math.min(Math.max(parsed.data.limit ?? 20, 1), 200);
+      const redis = getRedis();
+      const key = `gallery:liked:${id}`;
+      let cursor = parsed.data.cursor || "0";
+      const [nextCursor, members] = await redis.sscan(key, cursor, "COUNT", limit);
+      const data = members.map((m) => ({ user: m, itemId: id }));
+      const next = nextCursor === "0" ? null : nextCursor;
+      return { data, cursor: { next, limit } };
+    }
+  );
 
   app.put(
     "/gallery",
@@ -369,7 +517,10 @@ export default async function galleryRoutes(app: FastifyInstance) {
         },
         { upsert: true }
       );
-      await col.updateOne({ id }, { $push: { comments: comment }, $set: { updatedAt: now } });
+      await col.updateOne(
+        { id },
+        { $push: { comments: { ...comment, hidden: false } }, $set: { updatedAt: now } }
+      );
       const updated = await col.findOne({ id }, { projection: { comments: 1 } });
       if (!updated) return reply.code(500).send({ message: "Unable to save comment" });
       return { comments: sanitizeComments(updated.comments) };
