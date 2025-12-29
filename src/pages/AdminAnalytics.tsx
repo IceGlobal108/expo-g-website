@@ -204,6 +204,14 @@ const AdminAnalytics = () => {
         { id: "forms", label: "Forms" },
       ]}
     >
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 shadow-lg">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm font-medium text-foreground">Loading analytics...</span>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">Visualise key KPIs</p>
