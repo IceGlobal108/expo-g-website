@@ -25,4 +25,10 @@ export const env = {
   jwtRefreshSecret: firstDefined(["JWT_REFRESH_SECRET"], "JWT_REFRESH_SECRET"),
   adminUser: process.env.USER_NAME ?? "admin",
   adminPassword: process.env.PASSWORD ?? "admin",
+  smtpHost: required(process.env.SMTP_HOST, "SMTP_HOST"),
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpSecure: (process.env.SMTP_SECURE ?? "false") === "true",
+  smtpUser: required(process.env.SMTP_USER, "SMTP_USER"),
+  smtpPass: required(process.env.SMTP_PASS, "SMTP_PASS"),
+  emailFrom: process.env.EMAIL_FROM ?? process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "no-reply@example.com",
 };

@@ -1,6 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getDb } from "../../db/mongo";
+import { queueEmail } from "../../services/email";
+import { env } from "../../config/env";
 
 const eventCatalog = [
   { key: "welcome", title: "Welcome email", description: "Sent when a new admin account is created." },
@@ -67,6 +69,38 @@ export default async function notificationsRoutes(app: FastifyInstance) {
       );
 
       return { message: "Saved" };
+    }
+  );
+
+  app.post(
+    "/notifications/test",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const body = request.body as { event?: string; to?: string; placeholders?: Record<string, string> };
+      const event = eventCatalog.find((e) => e.key === body.event);
+      if (!event) return reply.code(400).send({ message: "Unknown event" });
+      const to = (body.to || "").trim() || env.emailFrom;
+      const placeholders = body.placeholders || {};
+      const db = await getDb();
+      const tpl = await db.collection("templates").findOne({ slug: event.key });
+      if (!tpl) return reply.code(404).send({ message: "Template not found for this event" });
+
+      const render = (content: string) =>
+        Object.entries(placeholders).reduce((acc, [k, v]) => acc.replaceAll(`{{${k}}}`, v), content || "");
+
+      const subject = render(tpl.subject || event.title);
+      const html = render(tpl.body || `<p>${event.title}</p>`);
+      const text = html.replace(/<[^>]+>/g, "");
+
+      await queueEmail({
+        to,
+        subject,
+        html,
+        text,
+        event: event.key,
+        meta: { test: true, placeholders },
+      });
+      return { message: "Queued" };
     }
   );
 }

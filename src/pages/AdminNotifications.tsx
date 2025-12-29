@@ -4,6 +4,8 @@ import { adminNavLinks } from "@/data/admin";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Loader2, Save } from "lucide-react";
 
 type NotificationEvent = {
@@ -18,6 +20,11 @@ const AdminNotifications = () => {
   const [events, setEvents] = useState<NotificationEvent[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testOpen, setTestOpen] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [testEvent, setTestEvent] = useState<NotificationEvent | null>(null);
+  const [placeholderJson, setPlaceholderJson] = useState("{\n  \"name\": \"Jane Doe\"\n}");
 
   const refreshAccessToken = async () => {
     const refreshToken = localStorage.getItem("admin_refresh_token");
@@ -93,6 +100,44 @@ const AdminNotifications = () => {
     }
   };
 
+  const sendTest = async () => {
+    if (!testEvent) return;
+    const to = testEmail.trim();
+    let placeholders: Record<string, string> = {};
+    if (placeholderJson.trim()) {
+      try {
+        const parsed = JSON.parse(placeholderJson);
+        if (typeof parsed === "object" && parsed !== null) {
+          placeholders = parsed as Record<string, string>;
+        }
+      } catch (err) {
+        alert("Placeholder JSON is invalid");
+        return;
+      }
+    }
+    setTesting(testEvent.key);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Not authenticated");
+      const res = await fetch(`${base}/notifications/test`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ event: testEvent.key, to, placeholders }),
+      });
+      if (!res.ok) throw new Error("Test failed");
+      setTestOpen(false);
+      setTestEvent(null);
+      setTestEmail("");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTesting(null);
+    }
+  };
+
   return (
     <AdminLayout
       title="Email notifications"
@@ -132,12 +177,65 @@ const AdminNotifications = () => {
                       setEvents((prev) => prev.map((e) => (e.key === event.key ? { ...e, enabled: val } : e)))
                     }
                   />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTestEvent(event);
+                      setTestOpen(true);
+                    }}
+                    disabled={!!testing}
+                  >
+                    {testing === event.key ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                    Test email
+                  </Button>
                 </div>
               </div>
             ))}
           {!loading && events.length === 0 && <p className="text-sm text-muted-foreground">No events found.</p>}
         </CardContent>
       </Card>
+      <Dialog open={testOpen} onOpenChange={(open) => { setTestOpen(open); if (!open) { setTesting(null); setTestEmail(""); setTestEvent(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send test email</DialogTitle>
+            <DialogDescription>
+              Enter an email to receive a test for <strong>{testEvent?.title ?? "this event"}</strong>. Leave blank to use the default sender.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendTest();
+            }}
+            className="space-y-4"
+          >
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Placeholder values (JSON)</p>
+              <textarea
+                className="w-full rounded-md border border-border/60 bg-background/60 p-2 text-sm font-mono min-h-[120px]"
+                value={placeholderJson}
+                onChange={(e) => setPlaceholderJson(e.target.value)}
+              />
+            </div>
+            <DialogFooter className="justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setTestOpen(false)} disabled={!!testing}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!!testing}>
+                {testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Send test
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 };
