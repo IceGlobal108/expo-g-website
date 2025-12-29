@@ -40,6 +40,7 @@ import themeRoutes from "./theme/routes";
 import notificationsRoutes from "./notifications/routes";
 import userAuthRoutes from "./user-auth/routes";
 import profileConfigRoutes from "./profile-config/routes";
+import analyticsRoutes from "./analytics/routes";
 
 export default async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
@@ -83,4 +84,5 @@ export default async function registerRoutes(app: FastifyInstance) {
   await app.register(notificationsRoutes);
   await app.register(userAuthRoutes);
   await app.register(profileConfigRoutes);
+  await app.register(analyticsRoutes);
 }

@@ -80,6 +80,7 @@ import AdminArches from "./pages/AdminArches";
 import AdminStalls from "./pages/AdminStalls";
 import AdminBuyerMosaic from "./pages/AdminBuyerMosaic";
 import AdminVvips from "./pages/AdminVvips";
+import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminFoundersEditor from "./pages/AdminFoundersEditor";
 import AdminCofoundersEditor from "./pages/AdminCofoundersEditor";
 import AdminCounts from "./pages/AdminCounts";
@@ -286,6 +287,14 @@ const App = () => (
             element={
               <AdminGuard>
                 <AdminNotifications />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/analytics"
+            element={
+              <AdminGuard>
+                <AdminAnalytics />
               </AdminGuard>
             }
           />

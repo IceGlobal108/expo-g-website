@@ -583,4 +583,40 @@ export default async function galleryRoutes(app: FastifyInstance) {
       return { message: "Deleted", id };
     }
   );
+
+  app.get(
+    "/admin/analytics/social",
+    { preHandler: [app.authenticate] },
+    async (_request, _reply) => {
+      const db = await getDb();
+      const col = db.collection<GalleryItem>("gallery");
+
+      const likesAgg = await col
+        .aggregate([{ $group: { _id: null, total: { $sum: "$likes" } } }])
+        .toArray();
+      const likesFromDocs = likesAgg[0]?.total || 0;
+
+      let likesBuffer = 0;
+      try {
+        const redis = getRedis();
+        const buffers = await redis.hvals("gallery:like-buffer");
+        likesBuffer = buffers.reduce((acc, val) => acc + Number(val || 0), 0);
+      } catch {
+        likesBuffer = 0;
+      }
+
+      const commentsAgg = await col
+        .aggregate([
+          { $project: { count: { $size: { $ifNull: ["$comments", []] } } } },
+          { $group: { _id: null, total: { $sum: "$count" } } },
+        ])
+        .toArray();
+      const commentsTotal = commentsAgg[0]?.total || 0;
+
+      return {
+        likes: likesFromDocs + likesBuffer,
+        comments: commentsTotal,
+      };
+    }
+  );
 }

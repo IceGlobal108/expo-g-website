@@ -5,6 +5,7 @@ import { ObjectId } from "mongodb";
 import { queueEmail } from "../../services/email";
 import { env } from "../../config/env";
 import { isNotificationEnabled } from "../../services/notifications";
+import { DateTime } from "luxon";
 
 const baseFields = [
   { id: "name", label: "Name", type: "text", required: true },
@@ -225,6 +226,65 @@ export default async function formsRoutes(app: FastifyInstance) {
 
     return { message: "Submitted" };
   });
+
+  app.get(
+    "/admin/analytics/forms",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const query = request.query as { from?: string; to?: string; tz?: string };
+      const tz = query.tz || "UTC";
+      const from = query.from ? DateTime.fromISO(query.from, { zone: tz }) : null;
+      const to = query.to ? DateTime.fromISO(query.to, { zone: tz }) : null;
+
+      const db = await getDb();
+      const col = db.collection("forms_submissions");
+
+      const match: any = {};
+      if (from || to) {
+        match.createdAt = {};
+        if (from?.isValid) match.createdAt.$gte = from.toJSDate();
+        if (to?.isValid) match.createdAt.$lte = to.toJSDate();
+        if (Object.keys(match.createdAt).length === 0) delete match.createdAt;
+      }
+
+      const byForm = await col
+        .aggregate([
+          { $match: match },
+          { $group: { _id: "$slug", count: { $sum: 1 } } },
+          { $project: { slug: "$_id", count: 1, _id: 0 } },
+          { $sort: { count: -1 } },
+        ])
+        .toArray();
+
+      const total = byForm.reduce((acc, cur) => acc + (cur.count || 0), 0);
+
+      const now = DateTime.now().setZone(tz);
+      const startOfToday = now.startOf("day").toJSDate();
+      const last7 = now.minus({ days: 7 }).toJSDate();
+      const last30 = now.minus({ days: 30 }).toJSDate();
+
+      const [todayCount, last7Count, last30Count] = await Promise.all([
+        col.countDocuments({ createdAt: { $gte: startOfToday } }),
+        col.countDocuments({ createdAt: { $gte: last7 } }),
+        col.countDocuments({ createdAt: { $gte: last30 } }),
+      ]);
+
+      return {
+        range: {
+          from: from?.isValid ? from.toISO() : null,
+          to: to?.isValid ? to.toISO() : null,
+          tz,
+        },
+        totals: { all: total },
+        byForm,
+        byWindow: {
+          today: todayCount,
+          last7d: last7Count,
+          last30d: last30Count,
+        },
+      };
+    }
+  );
 
   app.get(
     "/forms/submissions",

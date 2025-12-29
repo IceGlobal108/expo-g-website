@@ -6,28 +6,64 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { BarChart3, FileText, Layers, Settings, Users, Zap } from "lucide-react";
-
-type Stat = { value: number; suffix?: string; label: string };
+import { BarChart3, FileText, Layers, Settings, Users, Zap, Heart, MessageSquare } from "lucide-react";
 type LeadRow = { id: string; slug: string; createdAt: string; data: { label: string; value: unknown }[] };
 
 const AdminDashboard = () => {
   const base = import.meta.env.VITE_API_BASE_URL || "";
   const navigate = useNavigate();
-  const [stats, setStats] = useState<Stat[]>([]);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [leadStats, setLeadStats] = useState<{ today: number; last7d: number; last30d: number; byForm: { slug: string; count: number }[] }>({
+    today: 0,
+    last7d: 0,
+    last30d: 0,
+    byForm: [],
+  });
+  const [loadingLeadStats, setLoadingLeadStats] = useState(false);
+  const [socialStats, setSocialStats] = useState<{ likes: number; comments: number }>({ likes: 0, comments: 0 });
+  const [loadingSocial, setLoadingSocial] = useState(false);
 
   useEffect(() => {
     const loadStats = async () => {
+    };
+    const loadLeadStats = async () => {
       try {
-        const res = await fetch(`${base}/counts`);
-        if (res.ok) {
-          const payload = await res.json();
-          setStats(payload?.stats || []);
-        }
+        setLoadingLeadStats(true);
+        const token = localStorage.getItem("admin_access_token");
+        if (!token) return;
+        const res = await fetch(`${base}/admin/analytics/forms`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed stats");
+        const payload = await res.json();
+        setLeadStats({
+          today: payload?.byWindow?.today || 0,
+          last7d: payload?.byWindow?.last7d || 0,
+          last30d: payload?.byWindow?.last30d || 0,
+          byForm: payload?.byForm || [],
+        });
       } catch {
-        setStats([]);
+        setLeadStats({ today: 0, last7d: 0, last30d: 0, byForm: [] });
+      } finally {
+        setLoadingLeadStats(false);
+      }
+    };
+    const loadSocial = async () => {
+      try {
+        setLoadingSocial(true);
+        const token = localStorage.getItem("admin_access_token");
+        if (!token) return;
+        const res = await fetch(`${base}/admin/analytics/social`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed social");
+        const data = await res.json();
+        setSocialStats({ likes: data.likes || 0, comments: data.comments || 0 });
+      } catch {
+        setSocialStats({ likes: 0, comments: 0 });
+      } finally {
+        setLoadingSocial(false);
       }
     };
     const loadLeads = async () => {
@@ -48,7 +84,8 @@ const AdminDashboard = () => {
         setLoading(false);
       }
     };
-    loadStats();
+    loadLeadStats();
+    loadSocial();
     loadLeads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -74,21 +111,60 @@ const AdminDashboard = () => {
       ]}
     >
       <div id="overview" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {(stats.length ? stats : [{ label: "Published sections", value: 42 }, { label: "Pending reviews", value: 8 }]).map(
-          (stat, idx) => (
-            <Card key={`${stat.label}-${idx}`} className="bg-card/70 border-border/60">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">{stat.label}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-display font-semibold">
-                  {stat.value}
-                  {stat.suffix || ""}
-                </div>
-              </CardContent>
-            </Card>
-          )
-        )}
+        <Card className="bg-card/70 border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Leads today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-display font-semibold">
+              {loadingLeadStats ? "…" : leadStats.today}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/70 border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Leads last 7 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-display font-semibold">
+              {loadingLeadStats ? "…" : leadStats.last7d}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/70 border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Leads last 30 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-display font-semibold">
+              {loadingLeadStats ? "…" : leadStats.last30d}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/70 border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <Heart className="w-4 h-4" /> Total likes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-display font-semibold">
+              {loadingSocial ? "…" : socialStats.likes}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/70 border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" /> Total comments
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-display font-semibold">
+              {loadingSocial ? "…" : socialStats.comments}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div id="cms" className="grid gap-4">
@@ -176,6 +252,27 @@ const AdminDashboard = () => {
             <Button variant="outline" onClick={() => navigate("/admin/leads")}>
               View all leads
             </Button>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/70 border-border/60">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4" /> Leads by form
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loadingLeadStats && <div className="text-sm text-muted-foreground">Loading stats...</div>}
+            {!loadingLeadStats && leadStats.byForm.length === 0 && (
+              <div className="text-sm text-muted-foreground">No leads yet.</div>
+            )}
+            {leadStats.byForm.map((f) => (
+              <div key={f.slug} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{f.slug}</Badge>
+                </div>
+                <span className="font-display text-lg">{f.count}</span>
+              </div>
+            ))}
           </CardContent>
         </Card>
         <Card id="settings" className="bg-card/70 border-border/60">
