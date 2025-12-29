@@ -97,17 +97,4 @@ export default async function templatesRoutes(app: FastifyInstance) {
       return parsed.data;
     }
   );
-
-  app.delete(
-    "/templates/:slug",
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const { slug } = request.params as { slug: string };
-      const db = await getDb();
-      const col = db.collection("templates");
-      await col.deleteOne({ slug });
-      request.log.info({ slug }, "template deleted");
-      return { message: "Deleted" };
-    }
-  );
 }

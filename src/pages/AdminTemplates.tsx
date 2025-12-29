@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 
 type TemplateRow = {
   id?: string;
@@ -43,12 +43,22 @@ const AdminTemplates = () => {
   const base = import.meta.env.VITE_API_BASE_URL || "";
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [forms, setForms] = useState<{ slug: string; title: string }[]>([]);
-  const [active, setActive] = useState<TemplateRow>({ ...emptyTemplate, slug: "welcome" });
+  const [active, setActive] = useState<TemplateRow>({ ...emptyTemplate, slug: "" });
   const [filterForm, setFilterForm] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const sampleData = useMemo(() => {
+    const entries = (active.placeholders || []).map((p) => [p, p.toUpperCase()]);
+    return Object.fromEntries(entries);
+  }, [active.placeholders]);
+
+  const renderPreview = (text: string) => {
+    if (!text) return "";
+    return (active.placeholders || []).reduce((acc, key) => acc.replaceAll(`{{${key}}}`, sampleData[key] || `[${key}]`), text);
+  };
 
   const refreshAccessToken = async () => {
     const refreshToken = localStorage.getItem("admin_refresh_token");
@@ -87,7 +97,11 @@ const AdminTemplates = () => {
       const res = await fetch(`${base}/templates?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to load templates");
       const payload = await res.json();
-      setTemplates(payload?.data || []);
+      const items: TemplateRow[] = payload?.data || [];
+      setTemplates(items);
+      if (!active.slug && items.length) {
+        setActive({ ...items[0], formSlug: items[0].formSlug || "" });
+      }
     } catch (err) {
       console.error(err);
       setTemplates([]);
@@ -135,6 +149,11 @@ const AdminTemplates = () => {
       alert("Slug is required");
       return;
     }
+    const existing = templates.find((t) => t.slug === active.slug);
+    if (!existing) {
+      alert("Creating new templates is disabled. Select an existing template to edit.");
+      return;
+    }
     setSaving(true);
     try {
       const token = await getAccessToken();
@@ -153,23 +172,6 @@ const AdminTemplates = () => {
       console.error(err);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const deleteTemplate = async (slug: string) => {
-    if (!window.confirm("Delete this template?")) return;
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Not authenticated");
-      const res = await fetch(`${base}/templates/${slug}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Delete failed");
-      await loadTemplates();
-      setActive({ ...emptyTemplate, slug: "" });
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -254,16 +256,6 @@ const AdminTemplates = () => {
             <CardTitle>Editor</CardTitle>
             <CardDescription>Slug and title are required. Link to a form to auto-associate.</CardDescription>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setActive({ ...emptyTemplate, slug: "" })}>
-              <Plus className="w-4 h-4 mr-1" /> New
-            </Button>
-            {active.slug && (
-              <Button variant="ghost" size="sm" onClick={() => deleteTemplate(active.slug)}>
-                <Trash2 className="w-4 h-4 mr-1" /> Delete
-              </Button>
-            )}
-          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-3 gap-3">
@@ -271,7 +263,7 @@ const AdminTemplates = () => {
               <label className="text-xs text-muted-foreground">Slug</label>
               <Input
                 value={active.slug}
-                onChange={(e) => setActive({ ...active, slug: e.target.value })}
+                disabled
                 placeholder="welcome-email"
               />
             </div>
@@ -326,6 +318,7 @@ const AdminTemplates = () => {
             <TabsList>
               <TabsTrigger value="content">Content</TabsTrigger>
               <TabsTrigger value="placeholders">Placeholders</TabsTrigger>
+              <TabsTrigger value="preview">Preview</TabsTrigger>
             </TabsList>
             <TabsContent value="content" className="space-y-3 mt-3">
               <div className="grid md:grid-cols-2 gap-3">
@@ -369,6 +362,18 @@ const AdminTemplates = () => {
                   }
                 }}
               />
+            </TabsContent>
+            <TabsContent value="preview" className="space-y-3 mt-3">
+              <div className="p-4 rounded-md border border-border/60 bg-muted/30">
+                <p className="text-xs uppercase text-muted-foreground mb-1">Subject</p>
+                <p className="font-medium">{renderPreview(active.subject) || "—"}</p>
+              </div>
+              <div className="p-4 rounded-md border border-border/60 bg-muted/30">
+                <p className="text-xs uppercase text-muted-foreground mb-2">Body preview</p>
+                <pre className="whitespace-pre-wrap text-sm font-mono text-foreground">
+                  {renderPreview(active.body) || "No content yet."}
+                </pre>
+              </div>
             </TabsContent>
           </Tabs>
           <div className="flex justify-end">

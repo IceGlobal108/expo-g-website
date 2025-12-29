@@ -62,6 +62,7 @@ import AdminLeads from "./pages/AdminLeads";
 import AdminProfile from "./pages/AdminProfile";
 import AdminTemplates from "./pages/AdminTemplates";
 import AdminTheme from "./pages/AdminTheme";
+import AdminNotifications from "./pages/AdminNotifications";
 import AdminHomeSections from "./pages/AdminHomeSections";
 import AdminHero from "./pages/AdminHero";
 import AdminFooter from "./pages/AdminFooter";
@@ -264,6 +265,14 @@ const App = () => (
             element={
               <AdminGuard>
                 <AdminTemplates />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/notifications"
+            element={
+              <AdminGuard>
+                <AdminNotifications />
               </AdminGuard>
             }
           />
