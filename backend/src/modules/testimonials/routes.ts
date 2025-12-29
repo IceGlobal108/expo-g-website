@@ -32,6 +32,27 @@ const payloadSchema = z.object({
   testimonials: z.array(testimonialSchema),
 });
 
+const listQuerySchema = z.object({
+  page: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((v) => Number(v))
+    .catch(1)
+    .optional(),
+  pageSize: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((v) => Number(v))
+    .catch(24)
+    .optional(),
+  search: z.string().optional(),
+  rating: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((v) => Number(v))
+    .optional(),
+});
+
 export default async function testimonialsRoutes(app: FastifyInstance) {
   app.get("/testimonials", async () => {
     const db = await getDb();
@@ -41,6 +62,48 @@ export default async function testimonialsRoutes(app: FastifyInstance) {
     const parsed = payloadSchema.safeParse(stored);
     if (!parsed.success) return payloadSchema.parse({ testimonials: [] });
     return parsed.data;
+  });
+
+  app.get("/testimonials/list", async (request) => {
+    const db = await getDb();
+    const col = db.collection<{ testimonials: z.infer<typeof testimonialSchema>[]; hero: any }>({} as any)("testimonials");
+    const stored = await col.findOne({ key: "default" });
+    const parsed = stored ? payloadSchema.safeParse(stored) : null;
+    const testimonials = parsed?.success ? parsed.data.testimonials : [];
+
+    const query = listQuerySchema.safeParse(request.query);
+    const page = Math.max(query.success && query.data.page ? query.data.page : 1, 1);
+    const pageSize = Math.min(Math.max(query.success && query.data.pageSize ? query.data.pageSize : 24, 1), 200);
+    const search = query.success ? query.data.search : undefined;
+    const rating = query.success ? query.data.rating : undefined;
+
+    let filtered = testimonials;
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      filtered = filtered.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.company.toLowerCase().includes(q) ||
+          t.role.toLowerCase().includes(q) ||
+          t.quote.toLowerCase().includes(q)
+      );
+    }
+    if (rating) {
+      filtered = filtered.filter((t) => t.rating === rating);
+    }
+
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const start = (page - 1) * pageSize;
+    const data = filtered.slice(start, start + pageSize);
+
+    const ratings = Array.from(new Set(testimonials.map((t) => t.rating))).sort((a, b) => a - b);
+
+    return {
+      data,
+      pagination: { page, pageSize, total, totalPages },
+      filters: { ratings },
+    };
   });
 
   app.put(
@@ -57,6 +120,20 @@ export default async function testimonialsRoutes(app: FastifyInstance) {
       await col.updateOne({ key: "default" }, { $set: { key: "default", ...parsed.data } }, { upsert: true });
       request.log.info("testimonials.update success");
       return parsed.data;
+    }
+  );
+
+  app.delete(
+    "/testimonials/:id",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const db = await getDb();
+      const col = db.collection("testimonials");
+      const res = await col.updateOne({ key: "default" }, { $pull: { testimonials: { id } } });
+      if (!res.modifiedCount) return reply.code(404).send({ message: "Testimonial not found" });
+      request.log.info({ id }, "testimonials.delete removed");
+      return { message: "Deleted", id };
     }
   );
 }

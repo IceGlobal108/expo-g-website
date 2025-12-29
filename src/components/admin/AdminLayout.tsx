@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import AdminNavbar from "@/components/admin/AdminNavbar";
 import AdminRail, { type AdminSectionLink } from "@/components/admin/AdminRail";
+import AdminSidebar from "@/components/admin/AdminSidebar";
 
 interface AdminLayoutProps {
   title?: string;
@@ -24,7 +25,7 @@ const AdminLayout = ({
     <main className="min-h-screen bg-background text-foreground">
       <AdminNavbar />
       <section className="relative pt-20 md:pt-24 pb-16 md:pb-8">
-        <div className="container-custom relative z-10 max-w-6xl mx-auto space-y-6">
+        <div className="relative z-10 max-w-full px-14 mx-auto space-y-6">
           <div className="text-center space-y-3">
             <h1 className="text-4xl md:text-5xl font-display font-bold">{title}</h1>
             <p className="text-muted-foreground max-w-3xl mx-auto">{description}</p>
@@ -34,9 +35,10 @@ const AdminLayout = ({
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[260px,1fr] items-start">
-            <AdminRail sections={sections} />
+          <div className="grid gap-6 lg:grid-cols-[240px,1fr,240px] items-start">
+            <AdminRail sections={[]} />
             <div className="space-y-10">{children}</div>
+            <AdminSidebar sections={sections} />
           </div>
         </div>
       </section>

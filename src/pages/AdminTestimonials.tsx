@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { adminNavLinks } from "@/data/admin";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Plus, Save, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Testimonial = {
   id: string;
@@ -56,8 +57,37 @@ const AdminTestimonials = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [search, setSearch] = useState("");
+  const [ratingFilter, setRatingFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(6);
 
   const base = import.meta.env.VITE_API_BASE_URL || "";
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const rating = ratingFilter === "all" ? null : Number(ratingFilter);
+    const items = data.testimonials || [];
+    const filteredItems = items.filter((t) => {
+      const matchesSearch =
+        !q ||
+        t.name.toLowerCase().includes(q) ||
+        t.company.toLowerCase().includes(q) ||
+        t.role.toLowerCase().includes(q) ||
+        t.quote.toLowerCase().includes(q);
+      const matchesRating = rating ? t.rating === rating : true;
+      return matchesSearch && matchesRating;
+    });
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    return {
+      page: safePage,
+      totalPages,
+      total: filteredItems.length,
+      items: filteredItems.slice(start, start + pageSize),
+    };
+  }, [data.testimonials, page, pageSize, ratingFilter, search]);
 
   useEffect(() => {
     const load = async () => {
@@ -80,6 +110,12 @@ const AdminTestimonials = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (page > filtered.totalPages) {
+      setPage(filtered.totalPages || 1);
+    }
+  }, [filtered.totalPages]);
 
   const refreshAccessToken = async () => {
     const refreshToken = localStorage.getItem("admin_refresh_token");
@@ -152,8 +188,34 @@ const AdminTestimonials = () => {
       return { ...prev, testimonials };
     });
 
-  const removeTestimonial = (idx: number) =>
-    setData((prev) => ({ ...prev, testimonials: prev.testimonials.filter((_, i) => i !== idx) }));
+  const removeTestimonial = async (id: string) => {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Not authenticated.");
+      const attempt = async (authToken: string | null) =>
+        fetch(`${base}/testimonials/${id}`, {
+          method: "DELETE",
+          headers: {
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+        });
+      let res = await attempt(token);
+      if (res && res.status === 401) {
+        const refreshed = await refreshAccessToken();
+        res = await attempt(refreshed);
+      }
+      if (!res || !res.ok) throw new Error("Delete failed");
+      setData((prev) => ({ ...prev, testimonials: prev.testimonials.filter((t) => t.id !== id) }));
+      setSuccess("Testimonial deleted");
+    } catch (err: any) {
+      setError(err.message || "Unable to delete testimonial");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <AdminLayout
@@ -235,68 +297,107 @@ const AdminTestimonials = () => {
         <CardHeader>
           <CardTitle>Testimonials</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {data.testimonials.map((t, idx) => (
-            <div key={t.id} className="border border-border/60 rounded-xl p-3 space-y-2">
-              <div className="flex justify-between items-center">
-                <Input
-                  value={t.name}
-                  onChange={(e) => updateTestimonial(idx, "name", e.target.value)}
-                  placeholder="Name"
-                  className="font-semibold"
-                />
-                <Button variant="ghost" size="icon" onClick={() => removeTestimonial(idx)}>
-                  <Trash2 className="w-4 h-4" />
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, company, quote"
+                className="pl-9"
+              />
+            </div>
+            <Select value={ratingFilter} onValueChange={(v) => setRatingFilter(v)}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Rating" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All ratings</SelectItem>
+                {[5, 4, 3, 2, 1].map((r) => (
+                  <SelectItem key={r} value={String(r)}>
+                    {r} stars
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+              Page {filtered.page} / {filtered.totalPages} • {filtered.total} items
+              <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                <SelectTrigger className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[6, 12, 24, 48].map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size} / page
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" disabled={filtered.page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  Prev
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={filtered.page >= filtered.totalPages}
+                  onClick={() => setPage((p) => Math.min(filtered.totalPages, p + 1))}
+                >
+                  Next
                 </Button>
               </div>
-              <div className="grid md:grid-cols-2 gap-2">
-                <Input
-                  value={t.role}
-                  onChange={(e) => updateTestimonial(idx, "role", e.target.value)}
-                  placeholder="Role"
-                />
-                <Input
-                  value={t.company}
-                  onChange={(e) => updateTestimonial(idx, "company", e.target.value)}
-                  placeholder="Company"
-                />
-              </div>
-              <Input
-                value={t.image}
-                onChange={(e) => updateTestimonial(idx, "image", e.target.value)}
-                placeholder="Image URL"
-              />
-              <div className="grid md:grid-cols-[1fr,auto] gap-2 items-center">
-                <Textarea
-                  value={t.quote}
-                  rows={2}
-                  onChange={(e) => updateTestimonial(idx, "quote", e.target.value)}
-                  placeholder="Quote"
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={t.rating}
-                  onChange={(e) => updateTestimonial(idx, "rating", Number(e.target.value))}
-                  className="w-24"
-                />
-              </div>
             </div>
-          ))}
-          <Button variant="outline" onClick={addTestimonial}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add testimonial
-          </Button>
+          </div>
+
+          {filtered.items.map((t) => {
+            const idx = data.testimonials.findIndex((item) => item.id === t.id);
+            return (
+              <div key={t.id} className="border border-border/60 rounded-xl p-3 space-y-2">
+                <div className="flex justify-between items-center">
+                  <Input
+                    value={t.name}
+                    onChange={(e) => updateTestimonial(idx, "name", e.target.value)}
+                    placeholder="Name"
+                    className="font-semibold"
+                  />
+                  <Button variant="ghost" size="icon" onClick={() => removeTestimonial(t.id)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-2">
+                  <Input value={t.role} onChange={(e) => updateTestimonial(idx, "role", e.target.value)} placeholder="Role" />
+                  <Input value={t.company} onChange={(e) => updateTestimonial(idx, "company", e.target.value)} placeholder="Company" />
+                </div>
+                <Input value={t.image} onChange={(e) => updateTestimonial(idx, "image", e.target.value)} placeholder="Image URL" />
+                <div className="grid md:grid-cols-[1fr,auto] gap-2 items-center">
+                  <Textarea value={t.quote} rows={2} onChange={(e) => updateTestimonial(idx, "quote", e.target.value)} placeholder="Quote" />
+                  <Input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={t.rating}
+                    onChange={(e) => updateTestimonial(idx, "rating", Number(e.target.value))}
+                    className="w-24"
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {!filtered.items.length && <p className="text-sm text-muted-foreground">No testimonials yet.</p>}
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={addTestimonial}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add testimonial
+            </Button>
+            <Button className="ml-2" onClick={save} disabled={saving || loading}>
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? "Saving..." : "Save all"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={saving || loading}>
-          <Save className="w-4 h-4 mr-2" />
-          {saving ? "Saving..." : "Save all"}
-        </Button>
-      </div>
     </AdminLayout>
   );
 };

@@ -135,7 +135,7 @@ const AdminLeads = () => {
       <Card className="bg-card/70 border-border/60">
         <CardHeader className="space-y-3">
           <CardTitle>Filters</CardTitle>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -143,11 +143,11 @@ const AdminLeads = () => {
                 onChange={(e) => setQuery(e.target.value)}
                 onBlur={() => loadLeads({ reset: true })}
                 placeholder="Search name/email/fields"
-                className="pl-9"
+                className="pl-9 w-full"
               />
             </div>
             <Select value={slug} onValueChange={(v) => setSlug(v)}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="All forms" />
               </SelectTrigger>
               <SelectContent>
@@ -159,14 +159,8 @@ const AdminLeads = () => {
                 ))}
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
-              <span className="text-muted-foreground text-xs">to</span>
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
-            </div>
             <Select value={order} onValueChange={(v: "asc" | "desc") => setOrder(v)}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Sort" />
               </SelectTrigger>
               <SelectContent>
@@ -174,8 +168,18 @@ const AdminLeads = () => {
                 <SelectItem value="asc">Oldest first</SelectItem>
               </SelectContent>
             </Select>
+            <div className="grid grid-cols-2 gap-2 col-span-full">
+              <div className="relative">
+                <Calendar className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" className="pl-9 w-full" />
+              </div>
+              <div className="relative">
+                <Calendar className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" className="pl-9 w-full" />
+              </div>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={() => loadLeads({ reset: true })} disabled={loading}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Apply

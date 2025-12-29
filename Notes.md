@@ -108,3 +108,22 @@ Brand Guidelines request: asset request (name, email, company, intended use) —
 Feedback: experience input (name, email, role, rating, feedback) — Feedback.tsx
 
 Gallery comments: per-gallery comment post (name + comment) — GalleryDetail.tsx (lightweight engagement, not structured lead)
+
+
+HeroEditor.tsx
+ReviewEditor.tsx
+BrandEditor.tsx
+CelebEditor.tsx
+SellerEditor.tsx
+BuyerEditor.tsx
+TimelineEditor.tsx
+ArchesEditor.tsx
+StallsEditor.tsx
+BuyerMosaicEditor.tsx
+VvipEditor.tsx
+FoundersEditor.tsx
+CoFoundersEditor.tsx
+CountEditor.tsx
+DualCtaEditor.tsx
+FooterEditor.tsx
+GalleryItemsEditor.tsx

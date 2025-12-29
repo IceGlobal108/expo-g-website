@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search, ChevronDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 type BrandItem = {
   slug: string;
@@ -102,7 +103,6 @@ const AdminBrands = () => {
 
   const addItem = () =>
     setItems((prev) => [
-      ...prev,
       {
         slug: "",
         name: "",
@@ -112,6 +112,7 @@ const AdminBrands = () => {
         image: "",
         summary: "",
       },
+      ...prev,
     ]);
 
   const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -307,11 +308,19 @@ const AdminBrands = () => {
       return;
     }
     try {
-      const res = await fetch(`${base}/brands/${slug}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Delete failed");
+      const attempt = async (authToken: string | null) =>
+        fetch(`${base}/brands/${slug}`, {
+          method: "DELETE",
+          headers: {
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+        });
+      let res = await attempt(token);
+      if (res && res.status === 401) {
+        const refreshed = await refreshAccessToken(base);
+        res = await attempt(refreshed);
+      }
+      if (!res || !res.ok) throw new Error("Delete failed");
       setItems((prev) => prev.filter((item) => item.slug !== slug));
     } catch (err: any) {
       setError(err.message || "Unable to delete brand");
@@ -364,7 +373,7 @@ const AdminBrands = () => {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/60 bg-card/70 p-4 flex flex-col gap-3">
+      <div id="brands" className="rounded-xl border border-border/60 bg-card/70 p-4 flex flex-col gap-3">
         <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
           <div className="relative w-full md:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -418,28 +427,38 @@ const AdminBrands = () => {
         </div>
       </div>
 
-      <div className="grid gap-4">
+      <Accordion type="multiple" className="grid gap-4">
         {items.map((item, idx) => (
-          <Card key={item.slug || idx} className="bg-card/80 border-border/70">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="space-y-1">
-                <CardTitle>{item.name || "New brand"}</CardTitle>
-                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                  {item.slug && <Badge variant="outline">{item.slug}</Badge>}
-                  {item.category && <Badge variant="secondary">{item.category}</Badge>}
-                  {item.relationship && <Badge>{item.relationship}</Badge>}
+          <AccordionItem
+            key={item.slug || idx}
+            value={item.slug || `brand-${idx}`}
+            className="rounded-xl border border-border/70 bg-card/80 px-4"
+          >
+            <AccordionTrigger className="py-4 text-left">
+              <div className="flex items-center gap-3">
+                <ChevronDown className="w-4 h-4 shrink-0" />
+                <div className="space-y-1">
+                  <div className="font-semibold">{item.name || "New brand"}</div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    {item.slug && <Badge variant="outline">{item.slug}</Badge>}
+                    {item.category && <Badge variant="secondary">{item.category}</Badge>}
+                    {item.relationship && <Badge>{item.relationship}</Badge>}
+                  </div>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => deleteItem(item.slug || "")}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">Slug</label>
-                  <Input value={item.slug} onChange={(e) => updateItem(idx, "slug", e.target.value)} placeholder="techvision-labs" />
-                </div>
+            </AccordionTrigger>
+            <AccordionContent className="pb-4">
+              <div className="flex justify-end mb-3">
+                <Button variant="ghost" size="icon" onClick={() => deleteItem(item.slug || "")}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+              <CardContent className="space-y-3 p-0">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Slug</label>
+                    <Input value={item.slug} onChange={(e) => updateItem(idx, "slug", e.target.value)} placeholder="techvision-labs" />
+                  </div>
                 <div>
                   <label className="text-xs text-muted-foreground">Name</label>
                   <Input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder="TechVision Labs" />
@@ -625,11 +644,12 @@ const AdminBrands = () => {
                   />
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </AccordionContent>
+          </AccordionItem>
         ))}
         {!items.length && <p className="text-sm text-muted-foreground">No brands yet. Add your first brand to begin.</p>}
-      </div>
+      </Accordion>
     </AdminLayout>
   );
 };

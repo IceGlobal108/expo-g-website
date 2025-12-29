@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { adminNavGroups } from "@/data/admin";
 import { cn } from "@/lib/utils";
+import { ChevronDown } from "lucide-react";
 
 export type AdminSectionLink = { id: string; label: string };
 
@@ -10,6 +12,13 @@ interface AdminRailProps {
 }
 
 const AdminRail = ({ sections = [], className }: AdminRailProps) => {
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(adminNavGroups.map((g) => [g.label, false]))
+  );
+
+  const toggleGroup = (label: string) =>
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+
   return (
     <aside
       className={cn(
@@ -22,24 +31,38 @@ const AdminRail = ({ sections = [], className }: AdminRailProps) => {
         <div className="space-y-4">
           {adminNavGroups.map((group) => (
             <div key={group.label} className="space-y-2">
-              <div className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">{group.label}</div>
-              <div className="flex flex-col gap-1">
-                {group.items.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    to={item.href}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-transparent hover:border-primary/30 hover:text-primary transition-colors",
-                        isActive && "text-primary bg-primary/10 border-primary/20"
-                      )
-                    }
-                  >
-                    <span>{item.name}</span>
-                    <span className="text-[11px] text-muted-foreground">↗</span>
-                  </NavLink>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                className="w-full flex items-center justify-between text-[11px] uppercase tracking-[0.15em] text-muted-foreground hover:text-primary transition-colors"
+              >
+                <span>{group.label}</span>
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 transition-transform",
+                    openGroups[group.label] ? "rotate-180" : "rotate-0"
+                  )}
+                />
+              </button>
+              {openGroups[group.label] && (
+                <div className="flex flex-col gap-1">
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.href}
+                      to={item.href}
+                      className={({ isActive }) =>
+                        cn(
+                          "flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-transparent hover:border-primary/30 hover:text-primary transition-colors",
+                          isActive && "text-primary bg-primary/10 border-primary/20"
+                        )
+                      }
+                    >
+                      <span>{item.name}</span>
+                      <span className="text-[11px] text-muted-foreground">↗</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

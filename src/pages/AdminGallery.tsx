@@ -107,7 +107,42 @@ const AdminGallery = () => {
       },
     ]);
 
-  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
+  const removeItem = async (idx: number) => {
+    const target = items[idx];
+    if (!target) return;
+    const base = import.meta.env.VITE_API_BASE_URL || "";
+    // If the item is not persisted yet, just drop it locally.
+    if (!target.id) {
+      setItems((prev) => prev.filter((_, i) => i !== idx));
+      return;
+    }
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      const token = await getAccessToken(base);
+      if (!token) throw new Error("Not authenticated. Please login again.");
+      const attempt = async (authToken: string | null) =>
+        fetch(`${base}/gallery/${target.id}`, {
+          method: "DELETE",
+          headers: {
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+        });
+      let res = await attempt(token);
+      if (res && res.status === 401) {
+        const refreshed = await refreshAccessToken(base);
+        res = await attempt(refreshed);
+      }
+      if (!res || !res.ok) throw new Error("Delete failed");
+      setItems((prev) => prev.filter((_, i) => i !== idx));
+      setSuccess("Gallery item deleted");
+    } catch (err: any) {
+      setError(err.message || "Unable to delete item");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const addArticle = (idx: number) =>
     setItems((prev) => {

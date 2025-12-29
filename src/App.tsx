@@ -62,6 +62,24 @@ import AdminLeads from "./pages/AdminLeads";
 import AdminProfile from "./pages/AdminProfile";
 import AdminTemplates from "./pages/AdminTemplates";
 import AdminTheme from "./pages/AdminTheme";
+import AdminHomeSections from "./pages/AdminHomeSections";
+import AdminHero from "./pages/AdminHero";
+import AdminFooter from "./pages/AdminFooter";
+import AdminReviews from "./pages/AdminReviews";
+import AdminEditors from "./pages/AdminEditors";
+import AdminBrandEditor from "./pages/AdminBrandEditor";
+import AdminCelebrities from "./pages/AdminCelebrities";
+import AdminBuyerEditor from "./pages/AdminBuyerEditor";
+import AdminSellerEditor from "./pages/AdminSellerEditor";
+import AdminTimeline from "./pages/AdminTimeline";
+import AdminArches from "./pages/AdminArches";
+import AdminStalls from "./pages/AdminStalls";
+import AdminBuyerMosaic from "./pages/AdminBuyerMosaic";
+import AdminVvips from "./pages/AdminVvips";
+import AdminFoundersEditor from "./pages/AdminFoundersEditor";
+import AdminCofoundersEditor from "./pages/AdminCofoundersEditor";
+import AdminCounts from "./pages/AdminCounts";
+import AdminDualCta from "./pages/AdminDualCta";
 import ThemeLoader from "./components/ThemeLoader";
 
 const queryClient = new QueryClient();
@@ -294,6 +312,150 @@ const App = () => (
             element={
               <AdminGuard>
                 <AdminSellers />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/home-sections"
+            element={
+              <AdminGuard>
+                <AdminHomeSections />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/hero"
+            element={
+              <AdminGuard>
+                <AdminHero />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/footer"
+            element={
+              <AdminGuard>
+                <AdminFooter />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/reviews"
+            element={
+              <AdminGuard>
+                <AdminReviews />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/editors"
+            element={
+              <AdminGuard>
+                <AdminEditors />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/brand-editor"
+            element={
+              <AdminGuard>
+                <AdminBrandEditor />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/celebrities"
+            element={
+              <AdminGuard>
+                <AdminCelebrities />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/buyer-editor"
+            element={
+              <AdminGuard>
+                <AdminBuyerEditor />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/seller-editor"
+            element={
+              <AdminGuard>
+                <AdminSellerEditor />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/timeline"
+            element={
+              <AdminGuard>
+                <AdminTimeline />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/arches"
+            element={
+              <AdminGuard>
+                <AdminArches />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/stalls"
+            element={
+              <AdminGuard>
+                <AdminStalls />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/buyer-mosaic"
+            element={
+              <AdminGuard>
+                <AdminBuyerMosaic />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/vvips"
+            element={
+              <AdminGuard>
+                <AdminVvips />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/founder-editor"
+            element={
+              <AdminGuard>
+                <AdminFoundersEditor />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/cofounder-editor"
+            element={
+              <AdminGuard>
+                <AdminCofoundersEditor />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/counts"
+            element={
+              <AdminGuard>
+                <AdminCounts />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/dual-cta"
+            element={
+              <AdminGuard>
+                <AdminDualCta />
               </AdminGuard>
             }
           />
