@@ -9,7 +9,20 @@ const teamMemberSchema = z.object({
   role: z.string().default(""),
   department: z.string().default(""),
   focus: z.string().default(""),
-  image: z.string().url(),
+  image: z.string().min(1),
+  variants: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        path: z.string().min(1),
+        fileName: z.string().optional(),
+        format: z.string().optional(),
+        width: z.number().optional(),
+        height: z.number().optional(),
+        size: z.number().optional(),
+      })
+    )
+    .optional(),
   highlight: z.string().default(""),
   href: z.string().default(""),
   social: z
@@ -24,7 +37,20 @@ const teamMemberSchema = z.object({
     .object({
       headline: z.string().optional(),
       summary: z.string().optional(),
-      heroImage: z.string().url().optional(),
+      heroImage: z.string().optional(),
+      heroVariants: z
+        .array(
+          z.object({
+            key: z.string().min(1),
+            path: z.string().min(1),
+            fileName: z.string().optional(),
+            format: z.string().optional(),
+            width: z.number().optional(),
+            height: z.number().optional(),
+            size: z.number().optional(),
+          })
+        )
+        .optional(),
       highlights: z
         .array(z.object({ title: z.string(), body: z.string() }))
         .default([]),
@@ -71,6 +97,9 @@ const listQuerySchema = z.object({
     .optional(),
   search: z.string().optional(),
   department: z.string().optional(),
+  role: z.string().optional(),
+  focus: z.string().optional(),
+  sort: z.enum(["newest", "oldest"]).optional(),
 });
 
 export default async function teamsRoutes(app: FastifyInstance) {
@@ -133,18 +162,23 @@ export default async function teamsRoutes(app: FastifyInstance) {
       ];
     }
     if (query.department) filter.department = query.department;
+    if (query.role) filter.role = query.role;
+    if (query.focus) filter.focus = query.focus;
+    const sortOrder = query.sort === "oldest" ? 1 : -1;
     if (query.cursor) {
       try {
-        filter._id = { $gt: new ObjectId(query.cursor) };
+        filter._id = sortOrder === -1 ? { $lt: new ObjectId(query.cursor) } : { $gt: new ObjectId(query.cursor) };
       } catch {
         // ignore bad cursor
       }
     }
     const limit = Math.min(Math.max(query.limit ?? 24, 1), 200);
-    const data = await col.find(filter).sort({ _id: 1 }).limit(limit).toArray();
+    const data = await col.find(filter).sort({ _id: sortOrder }).limit(limit).toArray();
     const next = data.length === limit ? data[data.length - 1]._id?.toString() : null;
     const departments = await col.distinct("department");
-    return { data, cursor: { next, limit }, filters: { departments } };
+    const roles = await col.distinct("role");
+    const focuses = await col.distinct("focus");
+    return { data, cursor: { next, limit }, filters: { departments, roles, focuses } };
   });
 
   app.get("/teams/:id", async (request, reply) => {

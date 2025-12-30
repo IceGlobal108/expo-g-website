@@ -21,6 +21,7 @@ type Testimonial = {
   role: string;
   company: string;
   image: string;
+  variants?: { key: string; path?: string; fileName?: string }[];
   rating: number;
   quote: string;
 };
@@ -51,6 +52,28 @@ const TestimonialsPage = () => {
   const [items, setItems] = useState<Testimonial[]>(fallbackTestimonials);
   const [hero, setHero] = useState(defaultHero);
   const base = import.meta.env.VITE_API_BASE_URL || "";
+  const mediaBase = import.meta.env.VITE_MEDIA_BASE_URL || "";
+
+  const toUrl = (pathOrUrl: string) => {
+    if (!pathOrUrl) return "";
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    const trimmed = mediaBase.replace(/\/$/, "");
+    return `${trimmed}/${pathOrUrl.replace(/^\/+/, "")}`;
+  };
+
+  const resolveImage = (t: Testimonial) => {
+    const main = t.variants?.find((v) => v.key === "main") ?? t.variants?.[0];
+    const thumb = t.variants?.find((v) => v.key === "thumb");
+    const primary = main?.path ? toUrl(main.path) : main?.fileName ? toUrl(main.fileName) : t.image;
+    const fallback = thumb?.path ? toUrl(thumb.path) : thumb?.fileName ? toUrl(thumb.fileName) : primary;
+    return { primary, fallback };
+  };
+
+  const normalize = (list: Testimonial[]) =>
+    list.map((t) => ({
+      ...t,
+      variants: t.variants && t.variants.length ? t.variants : [{ key: "main", path: t.image }],
+    }));
 
   useEffect(() => {
     const load = async () => {
@@ -58,7 +81,7 @@ const TestimonialsPage = () => {
         const res = await fetch(`${base}/testimonials`);
         if (!res.ok) throw new Error("failed");
         const data = await res.json();
-        setItems(data.testimonials?.length ? data.testimonials : fallbackTestimonials);
+        setItems(data.testimonials?.length ? normalize(data.testimonials) : normalize(fallbackTestimonials));
         setHero({
           badge: data.hero?.badge || defaultHero.badge,
           title: data.hero?.title || defaultHero.title,
@@ -70,7 +93,7 @@ const TestimonialsPage = () => {
           ctaBody: data.hero?.ctaBody || defaultHero.ctaBody,
         });
       } catch {
-        setItems(fallbackTestimonials);
+        setItems(normalize(fallbackTestimonials));
         setHero(defaultHero);
       }
     };
@@ -109,53 +132,53 @@ const TestimonialsPage = () => {
 
       <section className="container-custom pb-16 space-y-10">
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {items.map((t, i) => (
-            <motion.div
-              key={t.name}
-              variants={stagger}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-60px" }}
-              custom={i}
-              className="relative overflow-hidden rounded-3xl border border-border/60 bg-card/80 backdrop-blur-sm shadow-xl shadow-primary/10"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-secondary/10" />
-              <div className="relative flex flex-col gap-4 p-6">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={t.image}
-                    alt={t.name}
-                    className="h-14 w-14 rounded-full object-cover border border-border/60"
-                  />
-                  <div>
-                    <div className="font-display font-semibold text-lg">{t.name}</div>
-                    <p className="text-sm text-muted-foreground">
-                      {t.role}, {t.company}
-                    </p>
+          {items.map((t, i) => {
+            const img = resolveImage(t);
+            return (
+              <motion.div
+                key={t.name}
+                variants={stagger}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, margin: "-60px" }}
+                custom={i}
+                className="relative overflow-hidden rounded-3xl border border-border/60 bg-card/80 backdrop-blur-sm shadow-xl shadow-primary/10"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-secondary/10" />
+                <div className="relative flex flex-col gap-4 p-6">
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={img.primary}
+                      onError={(e) => {
+                        if (img.fallback && e.currentTarget.src !== img.fallback) {
+                          e.currentTarget.src = img.fallback;
+                        }
+                      }}
+                      alt={t.name}
+                      className="h-14 w-14 rounded-full object-cover border border-border/60"
+                    />
+                    <div>
+                      <div className="font-display font-semibold text-lg">{t.name}</div>
+                      <p className="text-sm text-muted-foreground">
+                        {t.role}, {t.company}
+                      </p>
+                    </div>
                   </div>
+                  <div className="flex items-center gap-1 text-primary">
+                    {Array.from({ length: t.rating }).map((_, idx) => (
+                      <Star key={idx} className="w-4 h-4 fill-primary" />
+                    ))}
+                  </div>
+                  <motion.p initial={{ opacity: 0.6 }} whileHover={{ opacity: 1, y: -2 }} className="text-muted-foreground leading-relaxed">
+                    {t.quote}
+                  </motion.p>
+                  <motion.div initial={{ opacity: 0, y: 10 }} whileHover={{ opacity: 1, y: 0 }} className="text-xs uppercase tracking-[0.2em] text-primary">
+                    Live on stage · {t.rating}-star experience
+                  </motion.div>
                 </div>
-                <div className="flex items-center gap-1 text-primary">
-                  {Array.from({ length: t.rating }).map((_, idx) => (
-                    <Star key={idx} className="w-4 h-4 fill-primary" />
-                  ))}
-                </div>
-                <motion.p
-                  initial={{ opacity: 0.6 }}
-                  whileHover={{ opacity: 1, y: -2 }}
-                  className="text-muted-foreground leading-relaxed"
-                >
-                  {t.quote}
-                </motion.p>
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  whileHover={{ opacity: 1, y: 0 }}
-                  className="text-xs uppercase tracking-[0.2em] text-primary"
-                >
-                  Live on stage · {t.rating}-star experience
-                </motion.div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
 
         <motion.div

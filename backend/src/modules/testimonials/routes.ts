@@ -7,7 +7,20 @@ const testimonialSchema = z.object({
   name: z.string().min(1),
   role: z.string().default(""),
   company: z.string().default(""),
-  image: z.string().url(),
+  image: z.string().min(1),
+  variants: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        path: z.string().min(1),
+        fileName: z.string().optional(),
+        format: z.string().optional(),
+        width: z.number().optional(),
+        height: z.number().optional(),
+        size: z.number().optional(),
+      })
+    )
+    .optional(),
   rating: z.number().int().min(1).max(5).default(5),
   quote: z.string().default(""),
 });

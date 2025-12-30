@@ -6,13 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search, ChevronDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import MediaUploadModal, { type MediaUploadResult } from "@/components/admin/MediaUploadModal";
+import { toast } from "@/components/ui/sonner";
 
 type TeamDetail = {
   headline?: string;
   summary?: string;
   heroImage?: string;
+  heroVariants?: { key: string; path?: string; fileName?: string; format?: string; width?: number; height?: number; size?: number }[];
   highlights?: { title: string; body: string }[];
   metrics?: { label: string; value: string }[];
   pullQuote?: string;
@@ -27,6 +30,7 @@ type TeamItem = {
   department: string;
   focus: string;
   image: string;
+  variants?: { key: string; path?: string; fileName?: string; format?: string; width?: number; height?: number; size?: number }[];
   highlight: string;
   href?: string;
   social?: { linkedin?: string; twitter?: string; website?: string };
@@ -36,7 +40,7 @@ type TeamItem = {
 type TeamsResponse = {
   data: TeamItem[];
   cursor?: { next: string | null; limit: number };
-  filters?: { departments?: string[] };
+  filters?: { departments?: string[]; roles?: string[]; focuses?: string[] };
 };
 
 const PAGE_LIMIT = 24;
@@ -62,10 +66,42 @@ const AdminTeams = () => {
   const [copy, setCopy] = useState(defaultCopy);
   const [savingCopy, setSavingCopy] = useState(false);
   const [department, setDepartment] = useState<string>("All");
+  const [role, setRole] = useState<string>("All");
+  const [focus, setFocus] = useState<string>("All");
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [search, setSearch] = useState("");
   const [departments, setDepartments] = useState<string[]>(["All"]);
+  const [roles, setRoles] = useState<string[]>(["All"]);
+  const [focuses, setFocuses] = useState<string[]>(["All"]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [uploadTarget, setUploadTarget] = useState<{ idx: number; field: "image" | "hero" } | null>(null);
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
+  const [originalMap, setOriginalMap] = useState<Record<string, string>>({});
+
+  const defaultVariants = [
+    { key: "main", path: "" },
+    { key: "medium", path: "" },
+    { key: "thumb", path: "" },
+  ];
+
+  const normalizeItem = (item: TeamItem): TeamItem => ({
+    ...item,
+    variants:
+      item.variants && item.variants.length
+        ? item.variants
+        : defaultVariants.map((v) => ({ ...v, path: v.key === "main" ? item.image ?? "" : "" })),
+    detail: item.detail
+      ? {
+          ...item.detail,
+          heroVariants:
+            item.detail.heroVariants && item.detail.heroVariants.length
+              ? item.detail.heroVariants
+              : defaultVariants.map((v) => ({ ...v, path: v.key === "main" ? item.detail?.heroImage ?? "" : "" })),
+        }
+      : undefined,
+  });
 
   const load = async (reset = true) => {
     const base = import.meta.env.VITE_API_BASE_URL || "";
@@ -75,18 +111,28 @@ const AdminTeams = () => {
     params.set("limit", String(PAGE_LIMIT));
     if (!reset && cursor) params.set("cursor", cursor);
     if (department !== "All") params.set("department", department);
+    if (role !== "All") params.set("role", role);
+    if (focus !== "All") params.set("focus", focus);
+    params.set("sort", sort);
     if (search.trim()) params.set("search", search.trim());
     try {
       const res = await fetch(`${base}/teams/list?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to load team");
       const data = (await res.json()) as TeamsResponse;
-      const next = data.data || [];
+      const next = (data.data || []).map(normalizeItem);
       if (reset) {
         setItems(next);
       } else {
         setItems((prev) => [...prev, ...next]);
       }
+      const snapshotMap: Record<string, string> = {};
+      next.forEach((item) => {
+        if (item.id) snapshotMap[item.id] = JSON.stringify(item);
+      });
+      setOriginalMap((prev) => (reset ? snapshotMap : { ...prev, ...snapshotMap }));
       setDepartments(["All", ...(data.filters?.departments || [])]);
+      setRoles(["All", ...(data.filters?.roles || [])]);
+      setFocuses(["All", ...(data.filters?.focuses || [])]);
       setCursor(data.cursor?.next ?? null);
       setHasMore(Boolean(data.cursor?.next));
     } catch (err: any) {
@@ -112,7 +158,7 @@ const AdminTeams = () => {
     const debounce = setTimeout(() => load(true), 200);
     return () => clearTimeout(debounce);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [department, search]);
+  }, [department, role, focus, sort, search]);
 
   const updateItem = (idx: number, key: keyof TeamItem, value: any) =>
     setItems((prev) => {
@@ -123,8 +169,7 @@ const AdminTeams = () => {
 
   const addItem = () =>
     setItems((prev) => [
-      ...prev,
-      {
+      normalizeItem({
         id: createId(),
         name: "",
         role: "",
@@ -135,7 +180,8 @@ const AdminTeams = () => {
         href: "",
         social: {},
         detail: {},
-      },
+      }),
+      ...prev,
     ]);
 
   const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -285,7 +331,34 @@ const AdminTeams = () => {
         setError("Not authenticated.");
         return;
       }
-      for (const item of items) {
+      const deletedPaths = [...pendingDeletes];
+      const serialize = (item: TeamItem) => JSON.stringify(item);
+      const changedItems = items.filter((item) => {
+        const snapshot = item.id ? originalMap[item.id] : null;
+        return !snapshot || snapshot !== serialize(normalizeItem(item));
+      });
+
+      if (!changedItems.length) {
+        setSuccess("No changes to save");
+        return;
+      }
+
+      for (const item of changedItems) {
+        const cleanedVariants =
+          item.variants
+            ?.map((v) => ({ ...v, path: (v.path || v.fileName || "").trim(), fileName: (v.fileName || "").trim() }))
+            .filter((v) => v.path || v.fileName) ?? [];
+        const cleanedHeroVariants =
+          item.detail?.heroVariants
+            ?.map((v) => ({ ...v, path: (v.path || v.fileName || "").trim(), fileName: (v.fileName || "").trim() }))
+            .filter((v) => v.path || v.fileName) ?? [];
+
+        const payload = {
+          ...item,
+          variants: cleanedVariants,
+          detail: item.detail ? { ...item.detail, heroVariants: cleanedHeroVariants } : undefined,
+        };
+
         const attempt = async (authToken: string) =>
           fetch(`${base}/teams/${item.id}`, {
             method: "PUT",
@@ -293,7 +366,7 @@ const AdminTeams = () => {
               "Content-Type": "application/json",
               Authorization: `Bearer ${authToken}`,
             },
-            body: JSON.stringify(item),
+            body: JSON.stringify(payload),
           });
         let res = await attempt(token);
         if (res.status === 401) {
@@ -304,6 +377,28 @@ const AdminTeams = () => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message || "Save failed");
+        }
+        setOriginalMap((prev) => ({
+          ...prev,
+          [item.id]: serialize(
+            normalizeItem({
+              ...item,
+              variants: cleanedVariants,
+              detail: item.detail ? { ...item.detail, heroVariants: cleanedHeroVariants } : undefined,
+            })
+          ),
+        }));
+      }
+      if (deletedPaths.length) {
+        const res = await fetch(`${base}/media/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ paths: Array.from(new Set(deletedPaths)), reason: "team-image-replace" }),
+        });
+        if (!res.ok) {
+          toast.error("Some old team images could not be queued for deletion");
+        } else {
+          setPendingDeletes([]);
         }
       }
       setSuccess("Team saved");
@@ -328,6 +423,11 @@ const AdminTeams = () => {
       });
       if (!res.ok) throw new Error("Delete failed");
       setItems((prev) => prev.filter((item) => item.id !== id));
+      setOriginalMap((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     } catch (err: any) {
       setError(err.message || "Unable to delete team member");
     }
@@ -392,7 +492,7 @@ const AdminTeams = () => {
       </div>
 
       <div className="rounded-xl border border-border/60 bg-card/70 p-4 flex flex-col gap-3">
-        <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+        <div className="flex flex-col md:flex-row md:flex-wrap gap-3 items-start md:items-center">
           <div className="relative w-full md:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -403,7 +503,7 @@ const AdminTeams = () => {
             />
           </div>
           <Select value={department} onValueChange={(v) => setDepartment(v)}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full md:w-[200px]">
               <SelectValue placeholder="Department" />
             </SelectTrigger>
             <SelectContent>
@@ -412,6 +512,39 @@ const AdminTeams = () => {
                   {d}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={role} onValueChange={(v) => setRole(v)}>
+            <SelectTrigger className="w-full md:w-[200px]">
+              <SelectValue placeholder="Role" />
+            </SelectTrigger>
+            <SelectContent>
+              {roles.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={focus} onValueChange={(v) => setFocus(v)}>
+            <SelectTrigger className="w-full md:w-[200px]">
+              <SelectValue placeholder="Focus" />
+            </SelectTrigger>
+            <SelectContent>
+              {focuses.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {f}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={(v: "newest" | "oldest") => setSort(v)}>
+            <SelectTrigger className="w-full md:w-[160px]">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
             </SelectContent>
           </Select>
           <div className="flex gap-2 ml-auto">
@@ -431,22 +564,35 @@ const AdminTeams = () => {
       </div>
 
       <div className="grid gap-4">
-        {items.map((item, idx) => (
-          <Card key={item.id} className="bg-card/80 border-border/70">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="space-y-1">
-                <CardTitle>{item.name || "New team member"}</CardTitle>
-                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                  {item.department && <Badge variant="secondary">{item.department}</Badge>}
-                  {item.role && <Badge variant="outline">{item.role}</Badge>}
-                  {item.focus && <Badge>{item.focus}</Badge>}
+        {items.map((item, idx) => {
+          const isOpen = expanded[item.id] ?? false;
+          return (
+            <Card key={item.id} className="bg-card/80 border-border/70">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setExpanded((prev) => ({ ...prev, [item.id]: !isOpen }))}
+                    aria-label={isOpen ? "Collapse" : "Expand"}
+                  >
+                    <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </Button>
+                  <div className="space-y-1">
+                    <CardTitle>{item.name || "New team member"}</CardTitle>
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                      {item.department && <Badge variant="secondary">{item.department}</Badge>}
+                      {item.role && <Badge variant="outline">{item.role}</Badge>}
+                      {item.focus && <Badge>{item.focus}</Badge>}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => deleteItem(item.id)}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3">
+                <Button variant="ghost" size="icon" onClick={() => deleteItem(item.id)}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </CardHeader>
+              {isOpen && (
+                <CardContent className="space-y-3">
               <div className="grid md:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground">ID</label>
@@ -476,8 +622,24 @@ const AdminTeams = () => {
                 <Input value={item.highlight} onChange={(e) => updateItem(idx, "highlight", e.target.value)} placeholder="Signature achievement" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Image URL</label>
-                <Input value={item.image} onChange={(e) => updateItem(idx, "image", e.target.value)} placeholder="https://..." />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-muted-foreground">Image path (auto-filled)</label>
+                  <Button variant="secondary" size="sm" onClick={() => setUploadTarget({ idx, field: "image" })}>
+                    Upload
+                  </Button>
+                </div>
+                <Input value={item.image} readOnly placeholder="Upload to fill automatically" />
+                <div className="grid md:grid-cols-3 gap-2 mt-2">
+                  {(item.variants ?? []).map((variant, vIdx) => (
+                    <div key={`${variant.key}-${vIdx}`} className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-2">
+                        <Badge variant="secondary">{variant.key}</Badge>
+                        <span>Path</span>
+                      </label>
+                      <Input value={variant.path || variant.fileName || ""} readOnly />
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="grid md:grid-cols-3 gap-3">
                 <div>
@@ -524,12 +686,24 @@ const AdminTeams = () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Hero image</label>
-                <Input
-                  value={item.detail?.heroImage || ""}
-                  onChange={(e) => updateDetail(idx, "heroImage", e.target.value)}
-                  placeholder="https://..."
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-muted-foreground">Hero image</label>
+                  <Button variant="secondary" size="sm" onClick={() => setUploadTarget({ idx, field: "hero" })}>
+                    Upload
+                  </Button>
+                </div>
+                <Input value={item.detail?.heroImage || ""} readOnly placeholder="Upload to fill automatically" />
+                <div className="grid md:grid-cols-3 gap-2 mt-2">
+                  {(item.detail?.heroVariants ?? []).map((variant, vIdx) => (
+                    <div key={`${variant.key}-${vIdx}`} className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-2">
+                        <Badge variant="secondary">{variant.key}</Badge>
+                        <span>Path</span>
+                      </label>
+                      <Input value={variant.path || variant.fileName || ""} readOnly />
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Pull quote</label>
@@ -610,15 +784,48 @@ const AdminTeams = () => {
                 ))}
               </div>
             </CardContent>
-          </Card>
-        ))}
-        {!items.length && <p className="text-sm text-muted-foreground">No team members yet. Add your first team member to begin.</p>}
-        {hasMore && (
-          <Button variant="outline" onClick={() => load(false)} disabled={loading}>
-            Load more
-          </Button>
-        )}
-      </div>
+          )}
+        </Card>
+      );
+    })}
+    {!items.length && <p className="text-sm text-muted-foreground">No team members yet. Add your first team member to begin.</p>}
+    {hasMore && (
+      <Button variant="outline" onClick={() => load(false)} disabled={loading}>
+        Load more
+      </Button>
+    )}
+  </div>
+
+  <MediaUploadModal
+        open={uploadTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setUploadTarget(null);
+        }}
+        onUploaded={(result: MediaUploadResult) => {
+          if (uploadTarget === null) return;
+          const { idx, field } = uploadTarget;
+          const prevVariants = field === "image" ? items[idx]?.variants || [] : items[idx]?.detail?.heroVariants || [];
+          const prevPaths = prevVariants.map((v) => v.path || v.fileName).filter(Boolean) as string[];
+          const mainVariant = result.variants.find((v) => v.key === "main") ?? result.variants[0];
+          const imagePath = mainVariant?.path || mainVariant?.fileName || items[idx]?.image;
+          if (field === "image") {
+            updateItem(idx, "image", imagePath);
+            setItems((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], variants: result.variants };
+              return next;
+            });
+          } else {
+            setItems((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], detail: { ...next[idx].detail, heroImage: imagePath, heroVariants: result.variants } };
+              return next;
+            });
+          }
+          setPendingDeletes((prev) => [...prev, ...prevPaths]);
+          setUploadTarget(null);
+        }}
+      />
     </AdminLayout>
   );
 };

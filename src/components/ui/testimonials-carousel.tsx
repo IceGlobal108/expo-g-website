@@ -7,6 +7,7 @@ import { Star, ArrowUpRight } from "lucide-react";
 
 interface TestimonialCardProps {
   image: string;
+  variants?: { key: string; path?: string; fileName?: string }[];
   name: string;
   role: string;
   company: string;
@@ -14,14 +15,25 @@ interface TestimonialCardProps {
   quote?: string;
 }
 
-const TestimonialCard = ({
-  image,
-  name,
-  role,
-  company,
-  rating,
-  quote,
-}: TestimonialCardProps) => {
+const mediaBase = import.meta.env.VITE_MEDIA_BASE_URL || "";
+
+const toUrl = (pathOrUrl: string) => {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const trimmed = mediaBase.replace(/\/$/, "");
+  return `${trimmed}/${pathOrUrl.replace(/^\/+/, "")}`;
+};
+
+const resolveImage = (t: TestimonialCardProps) => {
+  const main = t.variants?.find((v) => v.key === "main") ?? t.variants?.[0];
+  const thumb = t.variants?.find((v) => v.key === "thumb");
+  const primary = main?.path ? toUrl(main.path) : main?.fileName ? toUrl(main.fileName) : t.image;
+  const fallback = thumb?.path ? toUrl(thumb.path) : thumb?.fileName ? toUrl(thumb.fileName) : primary;
+  return { primary, fallback };
+};
+
+const TestimonialCard = ({ image, variants, name, role, company, rating, quote }: TestimonialCardProps) => {
+  const img = resolveImage({ image, variants, name, role, company, rating, quote });
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -35,7 +47,12 @@ const TestimonialCard = ({
       <div className="relative p-5 space-y-4 h-full flex flex-col">
         <div className="flex items-center gap-3">
           <img
-            src={image}
+            src={img.primary}
+            onError={(e) => {
+              if (img.fallback && e.currentTarget.src !== img.fallback) {
+                e.currentTarget.src = img.fallback;
+              }
+            }}
             alt={name}
             className="w-14 h-14 rounded-2xl object-cover border border-border/70"
           />

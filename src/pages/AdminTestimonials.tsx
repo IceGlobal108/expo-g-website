@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import MediaUploadModal, { type MediaUploadResult } from "@/components/admin/MediaUploadModal";
+import { toast } from "@/components/ui/sonner";
 
 type Testimonial = {
   id: string;
@@ -14,6 +16,7 @@ type Testimonial = {
   role: string;
   company: string;
   image: string;
+  variants?: { key: string; path?: string; fileName?: string }[];
   rating: number;
   quote: string;
 };
@@ -61,6 +64,8 @@ const AdminTestimonials = () => {
   const [ratingFilter, setRatingFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(6);
+  const [uploadTarget, setUploadTarget] = useState<number | null>(null);
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
 
   const base = import.meta.env.VITE_API_BASE_URL || "";
 
@@ -89,6 +94,11 @@ const AdminTestimonials = () => {
     };
   }, [data.testimonials, page, pageSize, ratingFilter, search]);
 
+  const normalizeTestimonial = (t: Testimonial): Testimonial => ({
+    ...t,
+    variants: t.variants && t.variants.length ? t.variants : [{ key: "main", path: t.image }],
+  });
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -98,7 +108,7 @@ const AdminTestimonials = () => {
         const payload = (await res.json()) as Payload;
         setData({
           hero: { ...defaultPayload.hero, ...(payload.hero || {}) },
-          testimonials: payload.testimonials?.length ? payload.testimonials : [],
+          testimonials: payload.testimonials?.length ? payload.testimonials.map(normalizeTestimonial) : [],
         });
       } catch (err: any) {
         setError(err.message || "Unable to load");
@@ -164,6 +174,23 @@ const AdminTestimonials = () => {
         res = await attempt(refreshed);
       }
       if (!res.ok) throw new Error("Save failed");
+
+      if (pendingDeletes.length) {
+        const cleanup = await fetch(`${base}/media/delete`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ paths: Array.from(new Set(pendingDeletes)), reason: "testimonial-image-replace" }),
+        });
+        if (!cleanup.ok) {
+          toast.error("Some old images could not be queued for deletion");
+        } else {
+          setPendingDeletes([]);
+        }
+      }
+
       setSuccess("Testimonials updated");
     } catch (err: any) {
       setError(err.message || "Unable to save");
@@ -370,7 +397,26 @@ const AdminTestimonials = () => {
                   <Input value={t.role} onChange={(e) => updateTestimonial(idx, "role", e.target.value)} placeholder="Role" />
                   <Input value={t.company} onChange={(e) => updateTestimonial(idx, "company", e.target.value)} placeholder="Company" />
                 </div>
-                <Input value={t.image} onChange={(e) => updateTestimonial(idx, "image", e.target.value)} placeholder="Image URL" />
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-muted-foreground">Image path (auto-filled)</label>
+                    <Button variant="secondary" size="sm" onClick={() => setUploadTarget(idx)}>
+                      Upload
+                    </Button>
+                  </div>
+                  <Input value={t.image} readOnly placeholder="Upload to fill automatically" />
+                  <div className="grid md:grid-cols-3 gap-2 mt-2">
+                    {(t.variants ?? []).map((variant, vIdx) => (
+                      <div key={`${variant.key}-${vIdx}`} className="space-y-1">
+                        <label className="text-xs text-muted-foreground flex items-center gap-2">
+                          <span className="inline-flex h-5 px-2 rounded bg-muted text-[11px] uppercase tracking-wide">{variant.key}</span>
+                          <span>Path</span>
+                        </label>
+                        <Input value={variant.path || variant.fileName || ""} readOnly />
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div className="grid md:grid-cols-[1fr,auto] gap-2 items-center">
                   <Textarea value={t.quote} rows={2} onChange={(e) => updateTestimonial(idx, "quote", e.target.value)} placeholder="Quote" />
                   <Input
@@ -398,6 +444,32 @@ const AdminTestimonials = () => {
           </div>
         </CardContent>
       </Card>
+
+      <MediaUploadModal
+        open={uploadTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setUploadTarget(null);
+        }}
+        onUploaded={(result: MediaUploadResult) => {
+          if (uploadTarget === null) return;
+          const prevVariants = data.testimonials[uploadTarget]?.variants || [];
+          const prevPaths = prevVariants.map((v) => v.path || v.fileName).filter(Boolean) as string[];
+          const mainVariant = result.variants.find((v) => v.key === "main") ?? result.variants[0];
+          const imagePath = mainVariant?.path || mainVariant?.fileName || data.testimonials[uploadTarget].image;
+          setData((prev) => {
+            const next = { ...prev };
+            next.testimonials = [...prev.testimonials];
+            next.testimonials[uploadTarget] = {
+              ...next.testimonials[uploadTarget],
+              image: imagePath,
+              variants: result.variants,
+            };
+            return next;
+          });
+          setPendingDeletes((prev) => [...prev, ...prevPaths]);
+          setUploadTarget(null);
+        }}
+      />
     </AdminLayout>
   );
 };
