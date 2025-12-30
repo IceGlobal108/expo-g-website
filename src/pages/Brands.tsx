@@ -16,11 +16,35 @@ type BrandsResponse = {
 };
 
 const PAGE_LIMIT = 24;
+const mediaBase = import.meta.env.VITE_MEDIA_BASE_URL || "";
+const toUrl = (pathOrUrl: string) => {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = mediaBase.replace(/\/$/, "");
+  return `${base}/${pathOrUrl.replace(/^\/+/, "")}`;
+};
+
+const variantUrl = (item: any, keys: string[]) => {
+  for (const key of keys) {
+    const variant = item.variants?.find((v: any) => v.key === key);
+    if (variant?.path) return toUrl(variant.path);
+    if (variant?.fileName) return toUrl(variant.fileName);
+  }
+  return "";
+};
+
+const normalizeBrand = (item: any) => ({
+  ...item,
+  variants: item.variants ?? [{ key: "main", path: item.image }],
+  detail: item.detail
+    ? { ...item.detail, heroVariants: item.detail.heroVariants ?? [{ key: "main", path: item.detail.heroImage }] }
+    : undefined,
+});
 
 const Brands = () => {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
-  const [items, setItems] = useState(brandHighlights);
+  const [items, setItems] = useState(brandHighlights.map(normalizeBrand));
   const [categories, setCategories] = useState<string[]>(["All", ...Array.from(new Set(brandHighlights.map((b) => b.category)))]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,9 +66,9 @@ const Brands = () => {
         const res = await fetch(`${base}/brands?${params.toString()}`);
         if (!res.ok) throw new Error("Failed to load brands");
         const data = (await res.json()) as BrandsResponse;
-        const nextItems = data.data || [];
+        const nextItems = (data.data || []).map(normalizeBrand);
         if (reset) {
-          setItems(nextItems.length ? nextItems : brandHighlights);
+          setItems(nextItems.length ? nextItems : brandHighlights.map(normalizeBrand));
         } else {
           setItems((prev) => [...prev, ...nextItems]);
         }
@@ -81,7 +105,7 @@ const Brands = () => {
               const res = await fetch(`${base}/brands?${params.toString()}`);
               if (!res.ok) throw new Error("Failed to load brands");
               const data = (await res.json()) as BrandsResponse;
-              const nextItems = data.data || [];
+              const nextItems = (data.data || []).map(normalizeBrand);
               setItems((prev) => [...prev, ...nextItems]);
               setCursor(data.cursor?.next ?? null);
               setHasMore(Boolean(data.cursor?.next));
@@ -128,7 +152,7 @@ const Brands = () => {
       <section className="pb-16">
         <div className="container-custom">
           {filtered.length === 0 ? (
-            <div className="text-center text-muted-foreground py-16">No brands matched your filters.</div>
+              <div className="text-center text-muted-foreground py-16">No brands matched your filters.</div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filtered.map((brand, idx) => (
@@ -143,7 +167,13 @@ const Brands = () => {
                   <Link to={`/brands/${brand.slug}`} className="block h-full">
                     <div className="relative h-48 overflow-hidden">
                       <img
-                        src={brand.image}
+                        src={variantUrl(brand, ["medium", "main", "thumb"]) || brand.image}
+                        onError={(e) => {
+                          const fallback = variantUrl(brand, ["thumb"]) || brand.image;
+                          if (fallback && e.currentTarget.src !== fallback) {
+                            e.currentTarget.src = fallback;
+                          }
+                        }}
                         alt={brand.name}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />

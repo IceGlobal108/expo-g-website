@@ -9,13 +9,39 @@ const brandSchema = z.object({
   logo: z.string().min(1),
   relationship: z.string().default(""),
   category: z.string().default(""),
-  image: z.string().url(),
+  image: z.string().min(1),
+  variants: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        path: z.string().min(1),
+        fileName: z.string().optional(),
+        format: z.string().optional(),
+        width: z.number().optional(),
+        height: z.number().optional(),
+        size: z.number().optional(),
+      })
+    )
+    .optional(),
   summary: z.string().optional(),
   detail: z
     .object({
       headline: z.string().optional(),
       summary: z.string().optional(),
-      heroImage: z.string().url().optional(),
+      heroImage: z.string().min(1).optional(),
+      heroVariants: z
+        .array(
+          z.object({
+            key: z.string().min(1),
+            path: z.string().min(1),
+            fileName: z.string().optional(),
+            format: z.string().optional(),
+            width: z.number().optional(),
+            height: z.number().optional(),
+            size: z.number().optional(),
+          })
+        )
+        .optional(),
       highlights: z
         .array(z.object({ title: z.string(), body: z.string() }))
         .default([]),

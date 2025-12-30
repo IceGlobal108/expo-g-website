@@ -48,10 +48,11 @@ const toUrl = (pathOrUrl: string) => {
 };
 
 const resolveImage = (item: GalleryItem) => {
-  const variant = item.variants?.find((v) => v.key === "main") ?? item.variants?.[0];
-  if (variant?.path) return toUrl(variant.path);
-  if (variant?.fileName) return toUrl(variant.fileName);
-  return item.image;
+  const main = item.variants?.find((v) => v.key === "main") ?? item.variants?.[0];
+  const thumb = item.variants?.find((v) => v.key === "thumb");
+  const primary = main?.path ? toUrl(main.path) : main?.fileName ? toUrl(main.fileName) : item.image;
+  const fallback = thumb?.path ? toUrl(thumb.path) : thumb?.fileName ? toUrl(thumb.fileName) : primary;
+  return { primary, fallback };
 };
 
 const normalizeItem = (item: GalleryItem) => ({
@@ -510,7 +511,13 @@ const GalleryDetail = () => {
               className="relative overflow-hidden rounded-3xl bg-card border border-border shadow-2xl shadow-primary/10"
             >
               <motion.img
-                src={resolveImage(item)}
+                src={resolveImage(item).primary}
+                onError={(e) => {
+                  const fallback = resolveImage(item).fallback;
+                  if (fallback && e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
                 alt={item.title}
                 className="w-full h-full object-cover"
                 style={{ scale: heroScale, opacity: heroOpacity }}

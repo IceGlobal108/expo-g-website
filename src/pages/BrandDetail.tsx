@@ -12,10 +12,48 @@ import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
 import { Loader2 } from "lucide-react";
 
+const mediaBase = import.meta.env.VITE_MEDIA_BASE_URL || "";
+const toUrl = (pathOrUrl: string) => {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = mediaBase.replace(/\/$/, "");
+  return `${base}/${pathOrUrl.replace(/^\/+/, "")}`;
+};
+
+const resolveVariant = (item: BrandItem, keys: string[]) => {
+  for (const key of keys) {
+    const variant = item.variants?.find((v) => v.key === key);
+    if (variant?.path) return toUrl(variant.path);
+    if (variant?.fileName) return toUrl(variant.fileName);
+  }
+  return item.image;
+};
+
+const resolveHero = (story?: BrandDetailStory) => {
+  if (!story) return { primary: "", fallback: "" };
+  const main = story.heroVariants?.find((v) => v.key === "main") ?? story.heroVariants?.[0];
+  const thumb = story.heroVariants?.find((v) => v.key === "thumb");
+  const primary = main?.path ? toUrl(main.path) : main?.fileName ? toUrl(main.fileName) : story.heroImage ?? "";
+  const fallback = thumb?.path ? toUrl(thumb.path) : thumb?.fileName ? toUrl(thumb.fileName) : primary;
+  return { primary, fallback };
+};
+
+const normalizeBrand = (item: BrandItem): BrandItem => ({
+  ...item,
+  variants: item.variants ?? [{ key: "main", path: item.image }],
+  detail: item.detail
+    ? {
+        ...item.detail,
+        heroVariants: item.detail.heroVariants ?? [{ key: "main", path: item.detail.heroImage }],
+      }
+    : undefined,
+});
+
 type BrandDetailStory = {
   headline?: string;
   summary?: string;
   heroImage?: string;
+  heroVariants?: { key: string; path?: string; fileName?: string }[];
   highlights?: { title: string; body: string }[];
   metrics?: { label: string; value: string }[];
   pullQuote?: string;
@@ -28,6 +66,7 @@ type BrandItem = {
   relationship: string;
   category: string;
   image: string;
+  variants?: { key: string; path?: string; fileName?: string }[];
   summary?: string;
   detail?: BrandDetailStory;
 };
@@ -52,12 +91,14 @@ const BrandDetail = () => {
         const res = await fetch(`${base}/brands/${slug}`);
         if (!res.ok) throw new Error("Brand fetch failed");
         const data = (await res.json()) as BrandItem;
-        setBrand(data);
-        const detail = data.detail || fallbackStory || null;
+        const normalized = normalizeBrand(data);
+        setBrand(normalized);
+        const detail = normalized.detail || fallbackStory || null;
         setStory(detail);
       } catch {
-        setBrand(fallbackBrand);
-        setStory(fallbackStory);
+        const normalizedFallback = fallbackBrand ? normalizeBrand(fallbackBrand) : null;
+        setBrand(normalizedFallback);
+        setStory(normalizedFallback?.detail || fallbackStory);
       } finally {
         setLoading(false);
       }
@@ -67,9 +108,9 @@ const BrandDetail = () => {
         const res = await fetch(`${base}/brands?page=1&pageSize=50`);
         if (!res.ok) throw new Error("List fetch failed");
         const data = await res.json();
-        setMoreBrands((data.data || []).filter((b: BrandItem) => b.slug !== slug));
+        setMoreBrands((data.data || []).map(normalizeBrand).filter((b: BrandItem) => b.slug !== slug));
       } catch {
-        setMoreBrands(brandHighlights.filter((b) => b.slug !== slug));
+        setMoreBrands(brandHighlights.map(normalizeBrand).filter((b) => b.slug !== slug));
       }
     };
     load();
@@ -111,7 +152,13 @@ const BrandDetail = () => {
       <section className="relative min-h-[70vh] flex items-end pb-16 pt-28 md:pt-36 overflow-hidden">
         <BackgroundBeams className="z-0" />
         <motion.img
-          src={story.heroImage || brand.image}
+          src={resolveHero(story).primary || resolveVariant(brand, ["main", "medium", "thumb"]) || brand.image}
+          onError={(e) => {
+            const fallback = resolveHero(story).fallback || resolveVariant(brand, ["thumb"]) || brand.image;
+            if (fallback && e.currentTarget.src !== fallback) {
+              e.currentTarget.src = fallback;
+            }
+          }}
           alt={brand.name}
           className="absolute inset-0 w-full h-full object-cover"
           style={{ scale: imageScale, opacity: imageOpacity }}

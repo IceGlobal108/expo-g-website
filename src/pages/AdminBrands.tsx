@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search, ChevronDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import MediaUploadModal, { type MediaUploadResult } from "@/components/admin/MediaUploadModal";
+
+type Variant = { key: string; path?: string; fileName?: string; format?: string; width?: number; height?: number; size?: number };
 
 type BrandItem = {
   slug: string;
@@ -17,11 +20,13 @@ type BrandItem = {
   relationship: string;
   category: string;
   image: string;
+  variants?: Variant[];
   summary?: string;
   detail?: {
     headline?: string;
     summary?: string;
     heroImage?: string;
+    heroVariants?: Variant[];
     highlights?: { title: string; body: string }[];
     metrics?: { label: string; value: string }[];
     pullQuote?: string;
@@ -36,6 +41,36 @@ type BrandsResponse = {
   pagination?: { page: number; pageSize: number; total: number; totalPages: number };
   filters?: { categories: string[] };
 };
+
+const defaultVariants: Variant[] = [
+  { key: "main", path: "" },
+  { key: "medium", path: "" },
+  { key: "thumb", path: "" },
+];
+
+const slugify = (input: string) =>
+  input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+const normalizeItem = (item: any): BrandItem => ({
+  ...item,
+  variants:
+    item.variants && item.variants.length
+      ? item.variants
+      : defaultVariants.map((v) => ({ ...v, path: v.key === "main" ? item.image ?? "" : "" })),
+  detail: item.detail
+    ? {
+        ...item.detail,
+        heroVariants:
+          item.detail.heroVariants && item.detail.heroVariants.length
+            ? item.detail.heroVariants
+            : defaultVariants.map((v) => ({ ...v, path: v.key === "main" ? item.detail.heroImage ?? "" : "" })),
+      }
+    : undefined,
+});
 
 const AdminBrands = () => {
   const navItems = adminNavLinks;
@@ -61,6 +96,8 @@ const AdminBrands = () => {
   const [categories, setCategories] = useState<string[]>(["All"]);
   const [category, setCategory] = useState<string>("All");
   const [search, setSearch] = useState("");
+  const [uploadTarget, setUploadTarget] = useState<{ idx: number; field: "image" | "hero" } | null>(null);
+  const [originalMap, setOriginalMap] = useState<Record<string, string>>({});
 
   const loadBrands = async (targetPage = 1, opts?: { category?: string; search?: string }) => {
     const base = import.meta.env.VITE_API_BASE_URL || "";
@@ -76,7 +113,13 @@ const AdminBrands = () => {
       const res = await fetch(`${base}/brands?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to load brands");
       const data = (await res.json()) as BrandsResponse;
-      setItems(data.data || []);
+      const normalized = (data.data || []).map(normalizeItem);
+      setItems(normalized);
+      const map: Record<string, string> = {};
+      normalized.forEach((b) => {
+        if (b.slug) map[b.slug] = JSON.stringify(b);
+      });
+      setOriginalMap(map);
       setPage(targetPage);
       setTotalPages(data.pagination?.totalPages ?? 1);
       setCategories(["All", ...(data.filters?.categories || [])]);
@@ -103,7 +146,7 @@ const AdminBrands = () => {
 
   const addItem = () =>
     setItems((prev) => [
-      {
+      normalizeItem({
         slug: "",
         name: "",
         logo: "",
@@ -111,7 +154,8 @@ const AdminBrands = () => {
         category: "",
         image: "",
         summary: "",
-      },
+        detail: { heroImage: "" },
+      }),
       ...prev,
     ]);
 
@@ -198,6 +242,12 @@ const AdminBrands = () => {
     return null;
   };
 
+  const getAccessToken = async (base: string) => {
+    const token = localStorage.getItem("admin_access_token");
+    if (token) return token;
+    return refreshAccessToken(base);
+  };
+
   const loadHero = async () => {
     const base = import.meta.env.VITE_API_BASE_URL || "";
     try {
@@ -251,12 +301,6 @@ const AdminBrands = () => {
     }
   };
 
-  const getAccessToken = async (base: string) => {
-    const token = localStorage.getItem("admin_access_token");
-    if (token) return token;
-    return refreshAccessToken(base);
-  };
-
   const saveItems = async () => {
     setSaving(true);
     setError("");
@@ -270,15 +314,50 @@ const AdminBrands = () => {
         return;
       }
 
-      for (const item of items) {
+      const serialize = (item: BrandItem) => JSON.stringify(item);
+      const changedItems = items.filter((item) => {
+        const snapshot = item.slug ? originalMap[item.slug] : null;
+        const normalized = normalizeItem(item);
+        return !snapshot || snapshot !== serialize(normalized);
+      });
+
+      if (!changedItems.length) {
+        setSuccess("No changes to save");
+        return;
+      }
+
+      for (const item of changedItems) {
+        const { _id, createdAt, updatedAt, ...rest } = item as any;
+
+        const slug = rest.slug && rest.slug.trim().length ? rest.slug : slugify(rest.name || "");
+        if (!slug) {
+          throw new Error("Slug is required. Please provide a slug or name for each brand.");
+        }
+
+        const cleanedVariants =
+          rest.variants
+            ?.map((v: Variant) => ({ ...v, path: (v.path || v.fileName || "").trim(), fileName: (v.fileName || "").trim() }))
+            .filter((v: Variant) => v.path || v.fileName) ?? [];
+        const cleanedHeroVariants =
+          rest.detail?.heroVariants
+            ?.map((v: Variant) => ({ ...v, path: (v.path || v.fileName || "").trim(), fileName: (v.fileName || "").trim() }))
+            .filter((v: Variant) => v.path || v.fileName) ?? [];
+
+        const payload = {
+          ...rest,
+          slug,
+          variants: cleanedVariants,
+          detail: rest.detail ? { ...rest.detail, heroVariants: cleanedHeroVariants } : undefined,
+        };
+
         const attempt = async (authToken: string) =>
-          fetch(`${base}/brands/${item.slug}`, {
+          fetch(`${base}/brands/${slug}`, {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${authToken}`,
             },
-            body: JSON.stringify(item),
+            body: JSON.stringify(payload),
           });
         let res = await attempt(token);
         if (res.status === 401) {
@@ -289,6 +368,10 @@ const AdminBrands = () => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message || "Save failed");
+        }
+
+        if (rest.slug) {
+          setOriginalMap((prev) => ({ ...prev, [rest.slug]: serialize(normalizeItem(rest as BrandItem)) }));
         }
       }
 
@@ -322,6 +405,11 @@ const AdminBrands = () => {
       }
       if (!res || !res.ok) throw new Error("Delete failed");
       setItems((prev) => prev.filter((item) => item.slug !== slug));
+      setOriginalMap((prev) => {
+        const next = { ...prev };
+        delete next[slug];
+        return next;
+      });
     } catch (err: any) {
       setError(err.message || "Unable to delete brand");
     }
@@ -377,12 +465,7 @@ const AdminBrands = () => {
         <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
           <div className="relative w-full md:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search brands..."
-              className="pl-9"
-            />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search brands..." className="pl-9" />
           </div>
           <Select value={category} onValueChange={(v) => setCategory(v)}>
             <SelectTrigger className="w-[200px]">
@@ -429,11 +512,7 @@ const AdminBrands = () => {
 
       <Accordion type="multiple" className="grid gap-4">
         {items.map((item, idx) => (
-          <AccordionItem
-            key={item.slug || idx}
-            value={item.slug || `brand-${idx}`}
-            className="rounded-xl border border-border/70 bg-card/80 px-4"
-          >
+          <AccordionItem key={item.slug || idx} value={item.slug || `brand-${idx}`} className="rounded-xl border border-border/70 bg-card/80 px-4">
             <AccordionTrigger className="py-4 text-left">
               <div className="flex items-center gap-3">
                 <ChevronDown className="w-4 h-4 shrink-0" />
@@ -459,197 +538,231 @@ const AdminBrands = () => {
                     <label className="text-xs text-muted-foreground">Slug</label>
                     <Input value={item.slug} onChange={(e) => updateItem(idx, "slug", e.target.value)} placeholder="techvision-labs" />
                   </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Name</label>
-                  <Input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder="TechVision Labs" />
+                  <div>
+                    <label className="text-xs text-muted-foreground">Name</label>
+                    <Input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder="TechVision Labs" />
+                  </div>
                 </div>
-              </div>
-              <div className="grid md:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">Logo (text/mark)</label>
-                  <Input value={item.logo} onChange={(e) => updateItem(idx, "logo", e.target.value)} placeholder="TV" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Relationship</label>
-                  <Input value={item.relationship} onChange={(e) => updateItem(idx, "relationship", e.target.value)} placeholder="Headline Sponsor" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Category</label>
-                  <Input value={item.category} onChange={(e) => updateItem(idx, "category", e.target.value)} placeholder="Technology" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Image URL</label>
-                <Input value={item.image} onChange={(e) => updateItem(idx, "image", e.target.value)} placeholder="https://..." />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Summary</label>
-                <Input
-                  value={item.summary || ""}
-                  onChange={(e) => updateItem(idx, "summary", e.target.value)}
-                  placeholder="One-liner for the brand story."
-                />
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">Detail headline</label>
-                  <Input
-                    value={item.detail?.headline || ""}
-                    onChange={(e) =>
-                      setItems((prev) => {
-                        const next = [...prev];
-                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, headline: e.target.value } };
-                        return next;
-                      })
-                    }
-                    placeholder="Spatial-first product launches..."
-                  />
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Logo (text/mark)</label>
+                    <Input value={item.logo} onChange={(e) => updateItem(idx, "logo", e.target.value)} placeholder="TV" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Relationship</label>
+                    <Input value={item.relationship} onChange={(e) => updateItem(idx, "relationship", e.target.value)} placeholder="Headline Sponsor" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Category</label>
+                    <Input value={item.category} onChange={(e) => updateItem(idx, "category", e.target.value)} placeholder="Technology" />
+                  </div>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Detail hero image</label>
-                  <Input
-                    value={item.detail?.heroImage || ""}
-                    onChange={(e) =>
-                      setItems((prev) => {
-                        const next = [...prev];
-                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, heroImage: e.target.value } };
-                        return next;
-                      })
-                    }
-                    placeholder="https://..."
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Detail summary</label>
-                <Input
-                  value={item.detail?.summary || ""}
-                  onChange={(e) =>
-                    setItems((prev) => {
-                      const next = [...prev];
-                      next[idx] = { ...next[idx], detail: { ...next[idx].detail, summary: e.target.value } };
-                      return next;
-                    })
-                  }
-                  placeholder="Short paragraph for the brand detail page."
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Pull quote</label>
-                <Input
-                  value={item.detail?.pullQuote || ""}
-                  onChange={(e) =>
-                    setItems((prev) => {
-                      const next = [...prev];
-                      next[idx] = { ...next[idx], detail: { ...next[idx].detail, pullQuote: e.target.value } };
-                      return next;
-                    })
-                  }
-                  placeholder="Signature quote shown in story cards."
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Highlights</p>
-                  <Button variant="outline" size="sm" onClick={() => addHighlight(idx)}>
-                    <Plus className="w-4 h-4 mr-1" /> Add
-                  </Button>
-                </div>
-                {(item.detail?.highlights || []).map((h, hIdx) => (
-                  <div key={hIdx} className="border border-border/60 rounded-xl p-3 space-y-2">
-                    <Input
-                      value={h.title}
-                      onChange={(e) => updateHighlight(idx, hIdx, "title", e.target.value)}
-                      placeholder="Headline"
-                    />
-                    <Input
-                      value={h.body}
-                      onChange={(e) => updateHighlight(idx, hIdx, "body", e.target.value)}
-                      placeholder="Body copy"
-                    />
-                    <Button variant="ghost" size="sm" onClick={() => removeHighlight(idx, hIdx)}>
-                      <Trash2 className="w-4 h-4 mr-1" /> Remove
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-muted-foreground">Image path (auto-filled)</label>
+                    <Button variant="secondary" size="sm" onClick={() => setUploadTarget({ idx, field: "image" })}>
+                      Upload
                     </Button>
                   </div>
-                ))}
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Metrics</p>
-                  <Button variant="outline" size="sm" onClick={() => addMetric(idx)}>
-                    <Plus className="w-4 h-4 mr-1" /> Add
-                  </Button>
+                  <Input value={item.image} readOnly placeholder="Upload to fill automatically" />
+                  <div className="grid md:grid-cols-3 gap-2 mt-2">
+                    {(item.variants ?? []).map((variant, vIdx) => (
+                      <div key={`${variant.key}-${vIdx}`} className="space-y-1">
+                        <label className="text-xs text-muted-foreground flex items-center gap-2">
+                          <Badge variant="secondary">{variant.key}</Badge>
+                          <span>Path</span>
+                        </label>
+                        <Input value={variant.path || variant.fileName || ""} readOnly />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                {(item.detail?.metrics || []).map((m, mIdx) => (
-                  <div key={mIdx} className="grid md:grid-cols-2 gap-2 items-center">
+                <div>
+                  <label className="text-xs text-muted-foreground">Summary</label>
+                  <Input
+                    value={item.summary || ""}
+                    onChange={(e) => updateItem(idx, "summary", e.target.value)}
+                    placeholder="One-liner for the brand story."
+                  />
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Detail headline</label>
                     <Input
-                      value={m.label}
-                      onChange={(e) => updateMetric(idx, mIdx, "label", e.target.value)}
-                      placeholder="Metric label"
+                      value={item.detail?.headline || ""}
+                      onChange={(e) =>
+                        setItems((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx], detail: { ...next[idx].detail, headline: e.target.value } };
+                          return next;
+                        })
+                      }
+                      placeholder="Spatial-first product launches..."
                     />
-                    <div className="flex gap-2">
-                      <Input
-                        value={m.value}
-                        onChange={(e) => updateMetric(idx, mIdx, "value", e.target.value)}
-                        placeholder="Metric value"
-                      />
-                      <Button variant="ghost" size="icon" onClick={() => removeMetric(idx, mIdx)}>
-                        <Trash2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-muted-foreground">Detail hero image</label>
+                      <Button variant="secondary" size="sm" onClick={() => setUploadTarget({ idx, field: "hero" })}>
+                        Upload
                       </Button>
                     </div>
+                    <Input value={item.detail?.heroImage || ""} readOnly placeholder="Upload to fill automatically" />
+                    <div className="grid md:grid-cols-3 gap-2 mt-2">
+                      {(item.detail?.heroVariants ?? []).map((variant, vIdx) => (
+                        <div key={`${variant.key}-${vIdx}`} className="space-y-1">
+                          <label className="text-xs text-muted-foreground flex items-center gap-2">
+                            <Badge variant="secondary">{variant.key}</Badge>
+                            <span>Path</span>
+                          </label>
+                          <Input value={variant.path || variant.fileName || ""} readOnly />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Impact description</label>
-                <Input
-                  value={item.detail?.impactDescription || ""}
-                  onChange={(e) =>
-                    setItems((prev) => {
-                      const next = [...prev];
-                      next[idx] = { ...next[idx], detail: { ...next[idx].detail, impactDescription: e.target.value } };
-                      return next;
-                    })
-                  }
-                  placeholder="Portable racks and edge demos let teams deploy in minutes on-site."
-                />
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
+                </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">CTA label</label>
+                  <label className="text-xs text-muted-foreground">Detail summary</label>
                   <Input
-                    value={item.detail?.ctaLabel || ""}
+                    value={item.detail?.summary || ""}
                     onChange={(e) =>
                       setItems((prev) => {
                         const next = [...prev];
-                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, ctaLabel: e.target.value } };
+                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, summary: e.target.value } };
                         return next;
                       })
                     }
-                    placeholder="Plan a showcase with us"
+                    placeholder="Short paragraph for the brand detail page."
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">CTA href</label>
+                  <label className="text-xs text-muted-foreground">Pull quote</label>
                   <Input
-                    value={item.detail?.ctaHref || ""}
+                    value={item.detail?.pullQuote || ""}
                     onChange={(e) =>
                       setItems((prev) => {
                         const next = [...prev];
-                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, ctaHref: e.target.value } };
+                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, pullQuote: e.target.value } };
                         return next;
                       })
                     }
-                    placeholder="/contact"
+                    placeholder="Signature quote shown in story cards."
                   />
                 </div>
-              </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Highlights</p>
+                    <Button variant="outline" size="sm" onClick={() => addHighlight(idx)}>
+                      <Plus className="w-4 h-4 mr-1" /> Add
+                    </Button>
+                  </div>
+                  {(item.detail?.highlights || []).map((h, hIdx) => (
+                    <div key={hIdx} className="border border-border/60 rounded-xl p-3 space-y-2">
+                      <Input value={h.title} onChange={(e) => updateHighlight(idx, hIdx, "title", e.target.value)} placeholder="Headline" />
+                      <Input value={h.body} onChange={(e) => updateHighlight(idx, hIdx, "body", e.target.value)} placeholder="Body copy" />
+                      <Button variant="ghost" size="sm" onClick={() => removeHighlight(idx, hIdx)}>
+                        <Trash2 className="w-4 h-4 mr-1" /> Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Metrics</p>
+                    <Button variant="outline" size="sm" onClick={() => addMetric(idx)}>
+                      <Plus className="w-4 h-4 mr-1" /> Add
+                    </Button>
+                  </div>
+                  {(item.detail?.metrics || []).map((m, mIdx) => (
+                    <div key={mIdx} className="grid md:grid-cols-2 gap-2 items-center">
+                      <Input value={m.label} onChange={(e) => updateMetric(idx, mIdx, "label", e.target.value)} placeholder="Metric label" />
+                      <div className="flex gap-2">
+                        <Input value={m.value} onChange={(e) => updateMetric(idx, mIdx, "value", e.target.value)} placeholder="Metric value" />
+                        <Button variant="ghost" size="icon" onClick={() => removeMetric(idx, mIdx)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Impact description</label>
+                  <Input
+                    value={item.detail?.impactDescription || ""}
+                    onChange={(e) =>
+                      setItems((prev) => {
+                        const next = [...prev];
+                        next[idx] = { ...next[idx], detail: { ...next[idx].detail, impactDescription: e.target.value } };
+                        return next;
+                      })
+                    }
+                    placeholder="Portable racks and edge demos let teams deploy in minutes on-site."
+                  />
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">CTA label</label>
+                    <Input
+                      value={item.detail?.ctaLabel || ""}
+                      onChange={(e) =>
+                        setItems((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx], detail: { ...next[idx].detail, ctaLabel: e.target.value } };
+                          return next;
+                        })
+                      }
+                      placeholder="Plan a showcase with us"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">CTA href</label>
+                    <Input
+                      value={item.detail?.ctaHref || ""}
+                      onChange={(e) =>
+                        setItems((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx], detail: { ...next[idx].detail, ctaHref: e.target.value } };
+                          return next;
+                        })
+                      }
+                      placeholder="/contact"
+                    />
+                  </div>
+                </div>
               </CardContent>
             </AccordionContent>
           </AccordionItem>
         ))}
         {!items.length && <p className="text-sm text-muted-foreground">No brands yet. Add your first brand to begin.</p>}
       </Accordion>
+
+      <MediaUploadModal
+        open={uploadTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setUploadTarget(null);
+        }}
+        onUploaded={(result: MediaUploadResult) => {
+          if (uploadTarget === null) return;
+          const { idx, field } = uploadTarget;
+          const mainVariant = result.variants.find((v) => v.key === "main") ?? result.variants[0];
+          const imagePath = mainVariant?.path || mainVariant?.fileName || items[idx]?.image;
+          if (field === "image") {
+            updateItem(idx, "image", imagePath);
+            setItems((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], variants: result.variants };
+              return next;
+            });
+          } else {
+            setItems((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], detail: { ...next[idx].detail, heroImage: imagePath, heroVariants: result.variants } };
+              return next;
+            });
+          }
+          setUploadTarget(null);
+        }}
+      />
     </AdminLayout>
   );
 };

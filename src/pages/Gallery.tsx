@@ -25,25 +25,33 @@ type GalleryResponse = {
 };
 
 const mediaBase = import.meta.env.VITE_MEDIA_BASE_URL || "";
-const toUrl = (pathOrUrl: string) => {
+const toUrl = (pathOrUrl: string | undefined) => {
   if (!pathOrUrl) return "";
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
   const base = mediaBase.replace(/\/$/, "");
   return `${base}/${pathOrUrl.replace(/^\/+/, "")}`;
 };
 
-const resolveImage = (item: GalleryItem) => {
-  const variant = item.variants?.find((v) => v.key === "main") ?? item.variants?.[0];
-  if (variant?.path) return toUrl(variant.path);
-  if (variant?.fileName) return toUrl(variant.fileName);
-  return item.image;
+const variantUrl = (item: GalleryItem, keys: string[]) => {
+  for (const key of keys) {
+    const variant = item.variants?.find((v) => v.key === key);
+    if (variant?.path) return toUrl(variant.path);
+    if (variant?.fileName) return toUrl(variant.fileName);
+  }
+  return "";
 };
 
-// Lazy loaded image component
-const LazyImage = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+// Lazy loaded image component with fallback
+const LazyImage = ({ src, fallbackSrc, alt, className }: { src: string; fallbackSrc?: string; alt: string; className?: string }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState(src);
   const imgRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCurrentSrc(src);
+    setIsLoaded(false);
+  }, [src]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -71,9 +79,15 @@ const LazyImage = ({ src, alt, className }: { src: string; alt: string; classNam
             <div className="absolute inset-0 animate-pulse bg-muted" />
           )}
           <img
-            src={src}
+            src={currentSrc}
             alt={alt}
             onLoad={() => setIsLoaded(true)}
+            onError={() => {
+              if (fallbackSrc && currentSrc !== fallbackSrc) {
+                setCurrentSrc(fallbackSrc);
+                setIsLoaded(false);
+              }
+            }}
             className={cn(
               "w-full h-auto object-cover transition-all duration-500",
               isLoaded ? "opacity-100" : "opacity-0"
@@ -90,7 +104,9 @@ const LazyImage = ({ src, alt, className }: { src: string; alt: string; classNam
 
 const Gallery = () => {
   const [items, setItems] = useState<GalleryItem[]>(
-    fallbackGalleryItems.slice(0, ITEMS_PER_PAGE).map((i) => ({ ...i, variants: i.variants ?? [{ key: "main", path: i.image }] }))
+    fallbackGalleryItems
+      .slice(0, ITEMS_PER_PAGE)
+      .map((i) => ({ ...i, variants: i.variants ?? [{ key: "main", path: i.image }] }))
   );
   const [hero, setHero] = useState<{ heading: string; accent: string; subheading: string }>({
     heading: "Legacy",
@@ -416,7 +432,12 @@ const Gallery = () => {
                     className="break-inside-avoid group"
                   >
                     <Link to={`/gallery/${item.originalId ?? item.id}`} className="relative block overflow-hidden rounded-xl">
-                      <LazyImage src={resolveImage(item)} alt={item.title} className="transition-transform duration-500 group-hover:scale-110" />
+                      <LazyImage
+                        src={variantUrl(item, ["medium", "main", "thumb"]) || item.image}
+                        fallbackSrc={variantUrl(item, ["thumb"]) || item.image}
+                        alt={item.title}
+                        className="transition-transform duration-500 group-hover:scale-110"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                       <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
                         <h3 className="font-display font-semibold text-foreground">
