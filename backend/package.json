@@ -37,7 +37,8 @@
     "seed:testimonials-home": "tsx scripts/seed-testimonials-home.ts",
     "seed:about": "tsx scripts/seed-about.ts",
     "seed:testimonials": "tsx scripts/seed-testimonials.ts",
-    "seed:templates": "tsx scripts/seed-templates.ts"
+    "seed:templates": "tsx scripts/seed-templates.ts",
+    "seed:all": "tsx scripts/seed-all.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

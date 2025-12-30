@@ -43,3 +43,36 @@ Health:
   - `GET /media` (auth): search/list with pagination and status filter.
   - `DELETE /media/:id` (auth): marks media pending delete and enqueues physical deletion via BullMQ worker.
 - Worker: `media-delete` queue deletes files from disk and marks Mongo doc as `deleted`.
+
+
+
+pm2 set pm2-logrotate:max_size 50M
+pm2 set pm2-logrotate:retain 14
+pm2 set pm2-logrotate:compress true
+pm2 set pm2-logrotate:dateFormat YYYY-MM-DD_HH-mm-ss
+pm2 set pm2-logrotate:rotateInterval '0 0 * * *'   # daily at midnight
+
+pm2 conf pm2-logrotate
+pm2 list
+
+journalctl -u pm2-root -f
+
+du -sh ~/.pm2/logs/*
+
+
+pm2 start ecosystem.config.cjs
+pm2 status
+pm2 logs server
+
+pm2 status
+pm2 start server
+pm2 restart server
+pm2 start ecosystem.config.cjs
+pm2 reload ecosystem.config.cjs
+pm2 restart ecosystem.config.cjs --only server
+pm2 delete server
+pm2 delete server
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 logs server
+
