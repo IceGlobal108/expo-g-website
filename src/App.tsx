@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Gallery from "./pages/Gallery";
 import GalleryDetail from "./pages/GalleryDetail";
@@ -91,7 +91,10 @@ import AdminDigests from "./pages/AdminDigests";
 import AdminHomeLayout from "./pages/AdminHomeLayout";
 import AdminTeamEditor from "./pages/AdminTeamEditor";
 import AdminTestimonialEditor from "./pages/AdminTestimonialEditor";
+import AdminMediaConfig from "./pages/AdminMediaConfig";
 import ThemeLoader from "./components/ThemeLoader";
+import { toast } from "@/components/ui/sonner";
+import { ADMIN_SESSION_EXPIRED_EVENT } from "./lib/admin-session";
 
 const queryClient = new QueryClient();
 
@@ -105,6 +108,21 @@ const ScrollToTop = () => {
   return null;
 };
 
+const AdminSessionListener = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handler = () => {
+      toast.error("Session expired. Please log in again.");
+      navigate("/admin/login", { replace: true });
+    };
+    window.addEventListener(ADMIN_SESSION_EXPIRED_EVENT, handler);
+    return () => window.removeEventListener(ADMIN_SESSION_EXPIRED_EVENT, handler);
+  }, [navigate]);
+
+  return null;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -113,6 +131,7 @@ const App = () => (
       <ThemeLoader />
       <BrowserRouter>
         <ScrollToTop />
+        <AdminSessionListener />
         <Routes>
           <Route path="/" element={<NewHome />} />
           <Route path="/new-home" element={<Index />} />
@@ -483,6 +502,14 @@ const App = () => (
             element={
               <AdminGuard>
                 <AdminStalls />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="/admin/media-config"
+            element={
+              <AdminGuard>
+                <AdminMediaConfig />
               </AdminGuard>
             }
           />

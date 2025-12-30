@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import path from "path";
 
 dotenv.config();
 
@@ -32,4 +33,15 @@ export const env = {
   smtpPass: required(process.env.SMTP_PASS, "SMTP_PASS"),
   emailFrom: process.env.EMAIL_FROM ?? process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "no-reply@example.com",
   userAccessTtl: process.env.USER_ACCESS_TTL || "30d",
+  mediaBaseUrl: required(process.env.MEDIA_BASE_URL, "MEDIA_BASE_URL"),
+  mediaStoragePath: process.env.MEDIA_STORAGE_PATH ?? path.resolve(process.cwd(), "storage", "media"),
+  mediaMaxSizeMb: Number(process.env.MEDIA_MAX_SIZE_MB ?? 10),
+  mediaAllowedTypes: (process.env.MEDIA_ALLOWED_TYPES ?? "image/jpeg,image/png,image/webp,image/avif")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean),
+  mediaWebpQuality: Number(process.env.MEDIA_WEBP_QUALITY ?? 82),
+  mediaThumbWidth: Number(process.env.MEDIA_THUMB_WIDTH ?? 480),
+  mediaThumbHeight: Number(process.env.MEDIA_THUMB_HEIGHT ?? 320),
+  mediaKeepOriginal: (process.env.MEDIA_KEEP_ORIGINAL ?? "false") === "true",
 };

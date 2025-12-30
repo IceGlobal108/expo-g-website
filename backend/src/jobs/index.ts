@@ -4,5 +4,6 @@ import { cacheWorker } from "./workers/cache";
 import { digestWorker } from "./workers/digest";
 import { logPruneWorker } from "./workers/log-prune";
 import { activityPruneWorker } from "./workers/activity-prune";
+import { mediaDeleteWorker } from "./workers/media-delete";
 
-export const workers = [emailWorker, imageWorker, cacheWorker, digestWorker, logPruneWorker, activityPruneWorker];
+export const workers = [emailWorker, imageWorker, cacheWorker, digestWorker, logPruneWorker, activityPruneWorker, mediaDeleteWorker];

@@ -25,6 +25,7 @@ import footerRoutes from "./footer/routes";
 import contactRoutes from "./contact/routes";
 import cookiesRoutes from "./cookies/routes";
 import feedbackRoutes from "./feedback/routes";
+import mediaRoutes from "./media/routes";
 import galleryDetailRoutes from "./gallery-detail/routes";
 import notFoundRoutes from "./not-found/routes";
 import partnerRoutes from "./partner/routes";
@@ -73,6 +74,7 @@ export default async function registerRoutes(app: FastifyInstance) {
   await app.register(contactRoutes);
   await app.register(cookiesRoutes);
   await app.register(feedbackRoutes);
+  await app.register(mediaRoutes);
   await app.register(galleryDetailRoutes);
   await app.register(notFoundRoutes);
   await app.register(partnerRoutes);

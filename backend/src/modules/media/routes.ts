@@ -1,0 +1,316 @@
+import { randomUUID } from "crypto";
+import fs from "fs/promises";
+import path from "path";
+import sharp from "sharp";
+import { ObjectId } from "mongodb";
+import { FastifyInstance } from "fastify";
+import multipart from "@fastify/multipart";
+import { z } from "zod";
+import { env } from "../../config/env";
+import { getDb } from "../../db/mongo";
+import { mediaDeleteQueue } from "../../jobs/queues";
+
+type MediaVariant = {
+  key: string;
+  format: string;
+  width?: number;
+  height?: number;
+  size: number;
+  url: string;
+  path: string;
+};
+
+type MediaDoc = {
+  _id?: ObjectId;
+  originalName: string;
+  mime: string;
+  size: number;
+  variants: MediaVariant[];
+  keepOriginal: boolean;
+  status: "ready" | "pendingDelete" | "deleted";
+  createdAt: Date;
+  deletedAt?: Date;
+};
+
+const variantInputSchema = z.object({
+  key: z.string().min(1),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  format: z.enum(["webp", "jpeg", "png", "avif"]).default("webp"),
+  quality: z.number().int().min(1).max(100).optional(),
+  fit: z.enum(["cover", "contain", "fill", "inside", "outside"]).default("cover"),
+});
+
+const uploadConfigSchema = z.object({
+  variants: z.array(variantInputSchema).optional(),
+  keepOriginal: z.boolean().optional(),
+  maxSizeMb: z.number().int().positive().optional(),
+  allowedTypes: z.array(z.string()).optional(),
+});
+
+const listQuerySchema = z.object({
+  q: z.string().optional(),
+  mime: z.string().optional(),
+  status: z.enum(["ready", "pendingDelete", "deleted"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const buildDatePath = () => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}/${month}/${day}`;
+};
+
+const ensureDir = async (dir: string) => {
+  await fs.mkdir(dir, { recursive: true });
+};
+
+const buildUrl = (relativePath: string) => {
+  const base = env.mediaBaseUrl.replace(/\/$/, "");
+  const normalized = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  return `${base}/${normalized}`;
+};
+
+const writeVariant = async (params: {
+  buffer: Buffer;
+  variant: z.infer<typeof variantInputSchema>;
+  baseName: string;
+  datePath: string;
+}) => {
+  const { buffer, variant, baseName, datePath } = params;
+  const fileName = `${baseName}-${variant.key}.${variant.format}`;
+  const targetDir = path.join(env.mediaStoragePath, datePath);
+  const targetPath = path.join(targetDir, fileName);
+
+  await ensureDir(targetDir);
+
+  let pipeline = sharp(buffer);
+  if (variant.width || variant.height) {
+    pipeline = pipeline.resize({
+      width: variant.width,
+      height: variant.height,
+      fit: variant.fit ?? "cover",
+    });
+  }
+
+  const quality = variant.quality ?? env.mediaWebpQuality;
+  const info = await pipeline.toFormat(variant.format as keyof sharp.FormatEnum, { quality }).toFile(targetPath);
+
+  return {
+    key: variant.key,
+    format: variant.format,
+    width: info.width ?? variant.width,
+    height: info.height ?? variant.height,
+    size: info.size,
+    url: buildUrl(path.posix.join(datePath, fileName)),
+    path: targetPath,
+  } satisfies MediaVariant;
+};
+
+export default async function mediaRoutes(app: FastifyInstance) {
+  await app.register(multipart, {
+    limits: { fileSize: env.mediaMaxSizeMb * 1024 * 1024 },
+  });
+
+  const defaults: z.infer<typeof variantInputSchema>[] = [
+    { key: "main", format: "webp", quality: env.mediaWebpQuality },
+    { key: "thumb", format: "webp", width: env.mediaThumbWidth, height: env.mediaThumbHeight, quality: env.mediaWebpQuality, fit: "cover" },
+  ];
+
+  const loadConfig = async () => {
+    const db = await getDb();
+    const col = db.collection("media-config");
+    const stored = await col.findOne<{ variants?: z.infer<typeof variantInputSchema>[]; keepOriginal?: boolean; maxSizeMb?: number; allowedTypes?: string[] }>({
+      key: "default",
+    });
+    return stored;
+  };
+
+  app.get("/media/config", { preHandler: [app.authenticate] }, async () => {
+    const stored = await loadConfig();
+    return {
+      variants: stored?.variants ?? defaults,
+      keepOriginal: stored?.keepOriginal ?? env.mediaKeepOriginal,
+      maxSizeMb: stored?.maxSizeMb ?? env.mediaMaxSizeMb,
+      allowedTypes: stored?.allowedTypes ?? env.mediaAllowedTypes,
+    };
+  });
+
+  app.put("/media/config", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = uploadConfigSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: "Invalid config" });
+    }
+    const db = await getDb();
+    const col = db.collection("media-config");
+    await col.updateOne({ key: "default" }, { $set: parsed.data }, { upsert: true });
+    return {
+      variants: parsed.data.variants ?? defaults,
+      keepOriginal: parsed.data.keepOriginal ?? env.mediaKeepOriginal,
+      maxSizeMb: parsed.data.maxSizeMb ?? env.mediaMaxSizeMb,
+      allowedTypes: parsed.data.allowedTypes ?? env.mediaAllowedTypes,
+    };
+  });
+
+  app.post("/media/config/restore", { preHandler: [app.authenticate] }, async () => {
+    const db = await getDb();
+    const col = db.collection("media-config");
+    await col.deleteOne({ key: "default" });
+    return {
+      variants: defaults,
+      keepOriginal: env.mediaKeepOriginal,
+      maxSizeMb: env.mediaMaxSizeMb,
+      allowedTypes: env.mediaAllowedTypes,
+    };
+  });
+
+  app.post("/media/upload", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const storedConfig = await loadConfig();
+    const allowedTypes = storedConfig?.allowedTypes ?? env.mediaAllowedTypes;
+    const maxSize = storedConfig?.maxSizeMb ?? env.mediaMaxSizeMb;
+
+    const file = await request.file();
+    if (!file) {
+      return reply.code(400).send({ message: "File is required" });
+    }
+
+    if (!allowedTypes.includes(file.mimetype)) {
+      return reply.code(400).send({ message: "Unsupported media type" });
+    }
+
+    const configRaw = file.fields?.config?.value ?? file.fields?.variants?.value;
+    let parsedConfig = uploadConfigSchema.safeParse({});
+
+    if (configRaw) {
+      try {
+        const parsedJson = typeof configRaw === "string" ? JSON.parse(configRaw) : JSON.parse(configRaw.toString());
+        parsedConfig = uploadConfigSchema.safeParse(parsedJson);
+      } catch (err) {
+        request.log.warn({ err }, "media.upload config parse failed");
+        return reply.code(400).send({ message: "Invalid config JSON" });
+      }
+    }
+
+    if (!parsedConfig.success) {
+      request.log.warn({ issues: parsedConfig.error.issues }, "media.upload config validation failed");
+      return reply.code(400).send({ message: "Invalid config" });
+    }
+
+    const buffer = await file.toBuffer();
+
+    if (buffer.length > maxSize * 1024 * 1024) {
+      return reply.code(400).send({ message: "File exceeds size limit" });
+    }
+
+    const baseName = randomUUID();
+    const datePath = buildDatePath();
+    const variants = parsedConfig.data.variants?.length ? parsedConfig.data.variants : storedConfig?.variants ?? defaults;
+    const keepOriginal = parsedConfig.data.keepOriginal ?? storedConfig?.keepOriginal ?? env.mediaKeepOriginal;
+
+    const writtenVariants: MediaVariant[] = [];
+
+    for (const variant of variants) {
+      const saved = await writeVariant({ buffer, variant, baseName, datePath });
+      writtenVariants.push(saved);
+    }
+
+    if (keepOriginal) {
+      const targetDir = path.join(env.mediaStoragePath, datePath);
+      const ext = path.extname(file.filename) || ".bin";
+      const originalName = `${baseName}-original${ext}`;
+      const targetPath = path.join(targetDir, originalName);
+      await ensureDir(targetDir);
+      await fs.writeFile(targetPath, buffer);
+      writtenVariants.push({
+        key: "original",
+        format: ext.replace(".", "") || file.mimetype,
+        size: buffer.length,
+        url: buildUrl(path.posix.join(datePath, originalName)),
+        path: targetPath,
+      });
+    }
+
+    const db = await getDb();
+    const col = db.collection<MediaDoc>("media");
+    const insert = await col.insertOne({
+      originalName: file.filename,
+      mime: file.mimetype,
+      size: buffer.length,
+      variants: writtenVariants,
+      keepOriginal,
+      status: "ready",
+      createdAt: new Date(),
+    });
+
+    return reply.code(201).send({
+      id: insert.insertedId.toString(),
+      originalName: file.filename,
+      mime: file.mimetype,
+      size: buffer.length,
+      variants: writtenVariants,
+      keepOriginal,
+      status: "ready",
+    });
+  });
+
+  app.get("/media", { preHandler: [app.authenticate] }, async (request) => {
+    const parsed = listQuerySchema.parse(request.query);
+    const db = await getDb();
+    const col = db.collection<MediaDoc>("media");
+
+    const filter: Record<string, unknown> = {};
+    if (parsed.q) {
+      filter.originalName = { $regex: parsed.q, $options: "i" };
+    }
+    if (parsed.mime) {
+      filter.mime = parsed.mime;
+    }
+    if (parsed.status) {
+      filter.status = parsed.status;
+    }
+
+    const total = await col.countDocuments(filter);
+    const items = await col
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .skip((parsed.page - 1) * parsed.limit)
+      .limit(parsed.limit)
+      .toArray();
+
+    const sanitized = items.map(({ _id, ...rest }) => ({ id: _id?.toString(), ...rest }));
+
+    return {
+      items: sanitized,
+      page: parsed.page,
+      limit: parsed.limit,
+      total,
+    };
+  });
+
+  app.delete("/media/:id", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!ObjectId.isValid(id)) {
+      return reply.code(400).send({ message: "Invalid id" });
+    }
+
+    const db = await getDb();
+    const col = db.collection<MediaDoc>("media");
+    const media = await col.findOne({ _id: new ObjectId(id) });
+    if (!media) {
+      return reply.code(404).send({ message: "Media not found" });
+    }
+
+    if (media.status === "pendingDelete") {
+      return reply.code(202).send({ id, status: "pendingDelete" });
+    }
+
+    await col.updateOne({ _id: new ObjectId(id) }, { $set: { status: "pendingDelete", deletedAt: new Date() } });
+
+    const paths = (media.variants ?? []).map((v) => v.path).filter(Boolean);
+    await mediaDeleteQueue.add("delete", { id, paths });
+
+    return reply.code(202).send({ id, status: "pendingDelete" });
+  });
+}

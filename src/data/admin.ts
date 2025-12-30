@@ -56,6 +56,7 @@ export const adminNavLinks = [
   { name: "Co-founders Editor", href: "/admin/cofounder-editor" },
   { name: "Counts", href: "/admin/counts" },
   { name: "Dual CTA", href: "/admin/dual-cta" },
+  { name: "Media Config", href: "/admin/media-config" },
   { name: "Digests", href: "/admin/digests" },
   { name: "Content", href: "/admin#content" },
   { name: "Users", href: "/admin#users" },
@@ -124,6 +125,7 @@ export const adminNavGroups = [
   { label: "Users", items: [{ name: "Users", href: "/admin/users" }] },
   { label: "Moderation", items: [{ name: "Comments", href: "/admin/comments" }, { name: "Likes", href: "/admin/likes" }] },
   { label: "Appearance", items: [{ name: "Theme", href: "/admin/theme" }] },
+  { label: "Media", items: [{ name: "Media Config", href: "/admin/media-config" }] },
   {
     label: "Home Editors",
     items: [

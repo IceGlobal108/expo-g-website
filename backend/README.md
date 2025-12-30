@@ -35,3 +35,11 @@ Health:
 - Add Swagger docs (`@fastify/swagger` is installed) with schemas.
 - Write workers for email and image processing.
 - Add tests (Vitest/supertest) for modules.
+
+## Media Upload API (new)
+- Env: `MEDIA_BASE_URL` (public base URL), optional `MEDIA_STORAGE_PATH` (default `storage/media`), `MEDIA_MAX_SIZE_MB` (default 10), `MEDIA_ALLOWED_TYPES`, `MEDIA_WEBP_QUALITY`, `MEDIA_THUMB_WIDTH`, `MEDIA_THUMB_HEIGHT`, `MEDIA_KEEP_ORIGINAL`.
+- Routes:
+  - `POST /media/upload` (auth): multipart `file` plus optional `config` JSON for variants. Generates WebP + thumbnail variants by default and returns URLs as `MEDIA_BASE_URL/<date>/<name>`.
+  - `GET /media` (auth): search/list with pagination and status filter.
+  - `DELETE /media/:id` (auth): marks media pending delete and enqueues physical deletion via BullMQ worker.
+- Worker: `media-delete` queue deletes files from disk and marks Mongo doc as `deleted`.
