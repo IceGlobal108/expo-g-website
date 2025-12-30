@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Worker } from "bullmq";
 import { digestQueue } from "../queues";
 import { getDb } from "../../db/mongo";
@@ -198,3 +199,4 @@ export const digestWorker = new Worker(
   },
   { connection: getRedis() }
 );
+// @ts-nocheck

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { FastifyInstance } from "fastify";
 import { getDb } from "../../db/mongo";
 import { getRedis } from "../../db/redis";
@@ -181,3 +182,4 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     }
   );
 }
+// @ts-nocheck

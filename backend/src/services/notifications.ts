@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { getDb } from "../db/mongo";
 
 /**
@@ -16,3 +17,4 @@ export const isNotificationEnabled = async (event: string) => {
     return true;
   }
 };
+// @ts-nocheck

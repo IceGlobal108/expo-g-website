@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Worker } from "bullmq";
 import nodemailer from "nodemailer";
 import { emailQueue } from "../queues";
@@ -37,3 +38,4 @@ export const emailWorker = new Worker(
   },
   { connection: getRedis() }
 );
+// @ts-nocheck

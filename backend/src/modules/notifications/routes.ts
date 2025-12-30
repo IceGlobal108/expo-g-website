@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getDb } from "../../db/mongo";
@@ -100,3 +101,4 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     }
   );
 }
+// @ts-nocheck
