@@ -14,6 +14,8 @@ type Variant = {
   height?: number;
   quality?: number;
   fit?: "cover" | "contain" | "fill" | "inside" | "outside";
+  path?: string;
+  fileName?: string;
 };
 
 type MediaConfig = {
@@ -21,6 +23,8 @@ type MediaConfig = {
   keepOriginal: boolean;
   maxSizeMb: number;
   allowedTypes: string[];
+  pathStyle: "date" | "flat";
+  folder: string;
 };
 
 const defaultVariant: Variant = {
@@ -32,11 +36,14 @@ const defaultVariant: Variant = {
 
 const AdminMediaConfig = () => {
   const base = import.meta.env.VITE_API_BASE_URL || "";
+  const mediaBase = import.meta.env.VITE_MEDIA_BASE_URL || base;
   const [config, setConfig] = useState<MediaConfig>({
     variants: [defaultVariant],
     keepOriginal: false,
     maxSizeMb: 10,
     allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/avif"],
+    pathStyle: "date",
+    folder: "",
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -106,6 +113,8 @@ const AdminMediaConfig = () => {
         keepOriginal: Boolean(payload.keepOriginal),
         maxSizeMb: Number(payload.maxSizeMb ?? 10),
         allowedTypes: payload.allowedTypes ?? config.allowedTypes,
+        pathStyle: payload.pathStyle ?? "date",
+        folder: payload.folder ?? "",
       });
     } catch (err) {
       console.error(err);
@@ -149,6 +158,8 @@ const AdminMediaConfig = () => {
         keepOriginal: Boolean(payload.keepOriginal),
         maxSizeMb: Number(payload.maxSizeMb ?? 10),
         allowedTypes: payload.allowedTypes ?? config.allowedTypes,
+        pathStyle: payload.pathStyle ?? "date",
+        folder: payload.folder ?? "",
       });
       toast.success("Media settings restored to defaults");
     } catch (err) {
@@ -230,6 +241,12 @@ const AdminMediaConfig = () => {
     return `${val.toFixed(val >= 10 ? 0 : 1)} ${sizes[i]}`;
   };
 
+  const buildMediaUrl = (p?: string) => {
+    if (!p) return "";
+    const trimmedBase = (mediaBase || "").replace(/\/$/, "");
+    return `${trimmedBase}/${p.replace(/^\/+/, "")}`;
+  };
+
   return (
     <AdminLayout
       title="Media Settings"
@@ -272,6 +289,29 @@ const AdminMediaConfig = () => {
                 />
                 <span className="text-sm text-muted-foreground">Store the original upload alongside generated variants.</span>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pathStyle">Path style</Label>
+              <select
+                id="pathStyle"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={config.pathStyle}
+                onChange={(e) => setConfig((prev) => ({ ...prev, pathStyle: e.target.value as MediaConfig["pathStyle"] }))}
+              >
+                <option value="date">Date-based folders (YYYY/MM/DD)</option>
+                <option value="flat">Flat (single folder)</option>
+              </select>
+              <p className="text-xs text-muted-foreground">Controls how files are organized on disk/URLs.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="folder">Folder prefix (optional)</Label>
+              <Input
+                id="folder"
+                placeholder="e.g. uploads or brand-assets"
+                value={config.folder}
+                onChange={(e) => setConfig((prev) => ({ ...prev, folder: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Applied on top of the path style.</p>
             </div>
           </div>
 
@@ -359,14 +399,16 @@ const AdminMediaConfig = () => {
                     <div key={variant.key ?? idx} className="flex gap-3 items-center">
                       <div className="w-24 h-16 bg-muted/40 rounded overflow-hidden border">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={variant.url} alt={variant.key} className="w-full h-full object-cover" />
+                        <img src={buildMediaUrl(variant.path ?? variant.fileName)} alt={variant.key} className="w-full h-full object-cover" />
                       </div>
                       <div className="space-y-1">
                         <div className="font-medium">{variant.key}</div>
                         <div className="text-sm text-muted-foreground">
                           {variant.format} {variant.width ? `${variant.width}px` : ""} {variant.height ? `x ${variant.height}px` : ""}
                         </div>
-                        <div className="text-xs text-muted-foreground">{formatSize(variant.size)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {variant.fileName} • {formatSize(variant.size)}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -392,7 +434,9 @@ const AdminMediaConfig = () => {
                     <div key={item.id ?? item.originalName} className="border rounded-lg overflow-hidden">
                       <div className="h-32 bg-muted/40 border-b overflow-hidden">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {preview?.url ? <img src={preview.url} alt={item.originalName} className="w-full h-full object-cover" /> : null}
+                        {preview?.path || preview?.fileName ? (
+                          <img src={buildMediaUrl(preview.path ?? preview.fileName)} alt={item.originalName} className="w-full h-full object-cover" />
+                        ) : null}
                       </div>
                       <div className="p-3 space-y-1">
                         <div className="text-sm font-medium truncate">{item.originalName}</div>

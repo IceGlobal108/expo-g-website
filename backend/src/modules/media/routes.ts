@@ -16,7 +16,8 @@ type MediaVariant = {
   width?: number;
   height?: number;
   size: number;
-  url: string;
+  fileName: string;
+  publicPath: string;
   path: string;
 };
 
@@ -46,6 +47,8 @@ const uploadConfigSchema = z.object({
   keepOriginal: z.boolean().optional(),
   maxSizeMb: z.number().int().positive().optional(),
   allowedTypes: z.array(z.string()).optional(),
+  pathStyle: z.enum(["date", "flat"]).optional(),
+  folder: z.string().optional(),
 });
 
 const listQuerySchema = z.object({
@@ -56,21 +59,23 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const buildDatePath = () => {
+const buildStoragePath = (pathStyle: "date" | "flat", folder?: string) => {
+  const safeFolder = folder?.replace(/\.\./g, "").replace(/^\/+|\/+$/g, "");
+  if (pathStyle === "flat") {
+    return safeFolder && safeFolder.length ? safeFolder : "";
+  }
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}/${month}/${day}`;
+  const datePath = `${now.getFullYear()}/${month}/${day}`;
+  if (safeFolder && safeFolder.length) {
+    return path.posix.join(safeFolder, datePath);
+  }
+  return datePath;
 };
 
 const ensureDir = async (dir: string) => {
   await fs.mkdir(dir, { recursive: true });
-};
-
-const buildUrl = (relativePath: string) => {
-  const base = env.mediaBaseUrl.replace(/\/$/, "");
-  const normalized = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  return `${base}/${normalized}`;
 };
 
 const writeVariant = async (params: {
@@ -83,6 +88,7 @@ const writeVariant = async (params: {
   const fileName = `${baseName}-${variant.key}.${variant.format}`;
   const targetDir = path.join(env.mediaStoragePath, datePath);
   const targetPath = path.join(targetDir, fileName);
+  const publicPath = path.posix.join(datePath, fileName);
 
   await ensureDir(targetDir);
 
@@ -104,7 +110,8 @@ const writeVariant = async (params: {
     width: info.width ?? variant.width,
     height: info.height ?? variant.height,
     size: info.size,
-    url: buildUrl(path.posix.join(datePath, fileName)),
+    fileName,
+    publicPath,
     path: targetPath,
   } satisfies MediaVariant;
 };
@@ -122,7 +129,14 @@ export default async function mediaRoutes(app: FastifyInstance) {
   const loadConfig = async () => {
     const db = await getDb();
     const col = db.collection("media-config");
-    const stored = await col.findOne<{ variants?: z.infer<typeof variantInputSchema>[]; keepOriginal?: boolean; maxSizeMb?: number; allowedTypes?: string[] }>({
+    const stored = await col.findOne<{
+      variants?: z.infer<typeof variantInputSchema>[];
+      keepOriginal?: boolean;
+      maxSizeMb?: number;
+      allowedTypes?: string[];
+      pathStyle?: "date" | "flat";
+      folder?: string;
+    }>({
       key: "default",
     });
     return stored;
@@ -135,6 +149,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
       keepOriginal: stored?.keepOriginal ?? env.mediaKeepOriginal,
       maxSizeMb: stored?.maxSizeMb ?? env.mediaMaxSizeMb,
       allowedTypes: stored?.allowedTypes ?? env.mediaAllowedTypes,
+      pathStyle: stored?.pathStyle ?? "date",
+      folder: stored?.folder ?? "",
     };
   });
 
@@ -151,6 +167,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
       keepOriginal: parsed.data.keepOriginal ?? env.mediaKeepOriginal,
       maxSizeMb: parsed.data.maxSizeMb ?? env.mediaMaxSizeMb,
       allowedTypes: parsed.data.allowedTypes ?? env.mediaAllowedTypes,
+      pathStyle: parsed.data.pathStyle ?? "date",
+      folder: parsed.data.folder ?? "",
     };
   });
 
@@ -163,6 +181,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
       keepOriginal: env.mediaKeepOriginal,
       maxSizeMb: env.mediaMaxSizeMb,
       allowedTypes: env.mediaAllowedTypes,
+      pathStyle: "date",
+      folder: "",
     };
   });
 
@@ -170,7 +190,6 @@ export default async function mediaRoutes(app: FastifyInstance) {
     const storedConfig = await loadConfig();
     const allowedTypes = storedConfig?.allowedTypes ?? env.mediaAllowedTypes;
     const maxSize = storedConfig?.maxSizeMb ?? env.mediaMaxSizeMb;
-
     const file = await request.file();
     if (!file) {
       return reply.code(400).send({ message: "File is required" });
@@ -198,6 +217,9 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: "Invalid config" });
     }
 
+    const pathStyle = parsedConfig.data.pathStyle ?? storedConfig?.pathStyle ?? "date";
+    const folder = parsedConfig.data.folder ?? storedConfig?.folder ?? "";
+
     const buffer = await file.toBuffer();
 
     if (buffer.length > maxSize * 1024 * 1024) {
@@ -205,7 +227,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
     }
 
     const baseName = randomUUID();
-    const datePath = buildDatePath();
+    const datePath = buildStoragePath(pathStyle, folder);
     const variants = parsedConfig.data.variants?.length ? parsedConfig.data.variants : storedConfig?.variants ?? defaults;
     const keepOriginal = parsedConfig.data.keepOriginal ?? storedConfig?.keepOriginal ?? env.mediaKeepOriginal;
 
@@ -221,13 +243,15 @@ export default async function mediaRoutes(app: FastifyInstance) {
       const ext = path.extname(file.filename) || ".bin";
       const originalName = `${baseName}-original${ext}`;
       const targetPath = path.join(targetDir, originalName);
+      const publicPath = path.posix.join(datePath, originalName);
       await ensureDir(targetDir);
       await fs.writeFile(targetPath, buffer);
       writtenVariants.push({
         key: "original",
         format: ext.replace(".", "") || file.mimetype,
         size: buffer.length,
-        url: buildUrl(path.posix.join(datePath, originalName)),
+        fileName: originalName,
+        publicPath,
         path: targetPath,
       });
     }
@@ -244,12 +268,25 @@ export default async function mediaRoutes(app: FastifyInstance) {
       createdAt: new Date(),
     });
 
+    const toPublic = (variant: MediaVariant) => {
+      const publicPath = (variant as any).publicPath ?? (variant as any).url ?? "";
+      return {
+        key: variant.key,
+        format: variant.format,
+        width: variant.width,
+        height: variant.height,
+        size: variant.size,
+        fileName: variant.fileName ?? publicPath.split("/").pop() ?? "",
+        path: publicPath,
+      };
+    };
+
     return reply.code(201).send({
       id: insert.insertedId.toString(),
       originalName: file.filename,
       mime: file.mimetype,
       size: buffer.length,
-      variants: writtenVariants,
+      variants: writtenVariants.map(toPublic),
       keepOriginal,
       status: "ready",
     });
@@ -279,7 +316,24 @@ export default async function mediaRoutes(app: FastifyInstance) {
       .limit(parsed.limit)
       .toArray();
 
-    const sanitized = items.map(({ _id, ...rest }) => ({ id: _id?.toString(), ...rest }));
+    const toPublic = (variant: MediaVariant) => {
+      const publicPath = (variant as any).publicPath ?? (variant as any).url ?? "";
+      return {
+        key: variant.key,
+        format: variant.format,
+        width: variant.width,
+        height: variant.height,
+        size: variant.size,
+        fileName: variant.fileName ?? publicPath.split("/").pop() ?? "",
+        path: publicPath,
+      };
+    };
+
+    const sanitized = items.map(({ _id, variants, pathStyle, folder, ...rest }) => ({
+      id: _id?.toString(),
+      ...rest,
+      variants: (variants as MediaVariant[] | undefined)?.map(toPublic) ?? [],
+    }));
 
     return {
       items: sanitized,
