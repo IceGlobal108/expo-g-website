@@ -59,6 +59,11 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const deletePathsSchema = z.object({
+  paths: z.array(z.string().min(1)).min(1),
+  reason: z.string().optional(),
+});
+
 const buildStoragePath = (pathStyle: "date" | "flat", folder?: string) => {
   const safeFolder = folder?.replace(/\.\./g, "").replace(/^\/+|\/+$/g, "");
   if (pathStyle === "flat") {
@@ -366,5 +371,21 @@ export default async function mediaRoutes(app: FastifyInstance) {
     await mediaDeleteQueue.add("delete", { id, paths });
 
     return reply.code(202).send({ id, status: "pendingDelete" });
+  });
+
+  app.post("/media/delete", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = deletePathsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      request.log.warn({ issues: parsed.error.issues }, "media.deletePaths validation failed");
+      return reply.code(400).send({ message: "Invalid payload" });
+    }
+
+    const sanitized = Array.from(new Set(parsed.data.paths.map((p) => p.replace(/\.\./g, "")).filter(Boolean)));
+    if (!sanitized.length) {
+      return reply.code(400).send({ message: "No paths to delete" });
+    }
+
+    await mediaDeleteQueue.add("delete-paths", { paths: sanitized, reason: parsed.data.reason ?? "manual" });
+    return reply.code(202).send({ queued: true, count: sanitized.length });
   });
 }

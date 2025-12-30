@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle2, Plus, Save, Trash2, Search, ChevronDown } fr
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import MediaUploadModal, { type MediaUploadResult } from "@/components/admin/MediaUploadModal";
+import { toast } from "@/components/ui/sonner";
 
 type Variant = { key: string; path?: string; fileName?: string; format?: string; width?: number; height?: number; size?: number };
 
@@ -99,6 +100,7 @@ const AdminBrands = () => {
   const [sort, setSort] = useState<"newest" | "oldest" | "name-asc" | "name-desc">("newest");
   const [uploadTarget, setUploadTarget] = useState<{ idx: number; field: "image" | "hero" } | null>(null);
   const [originalMap, setOriginalMap] = useState<Record<string, string>>({});
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
 
   const loadBrands = async (targetPage = 1, opts?: { category?: string; search?: string }) => {
     const base = import.meta.env.VITE_API_BASE_URL || "";
@@ -128,6 +130,7 @@ const AdminBrands = () => {
     } catch (err: any) {
       setError(err.message || "Unable to load brands");
       setItems([]);
+      setPendingDeletes([]);
     } finally {
       setLoading(false);
     }
@@ -374,6 +377,24 @@ const AdminBrands = () => {
 
         if (rest.slug) {
           setOriginalMap((prev) => ({ ...prev, [rest.slug]: serialize(normalizeItem(rest as BrandItem)) }));
+        }
+      }
+
+      if (deletedPaths.length) {
+        const base = import.meta.env.VITE_API_BASE_URL || "";
+        const token = await getAccessToken(base);
+        const res = await fetch(`${base}/media/delete`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ paths: Array.from(new Set(deletedPaths)), reason: "brand-image-replace" }),
+        });
+        if (!res.ok) {
+          toast.error("Some old media could not be queued for deletion");
+        } else {
+          setPendingDeletes([]);
         }
       }
 
@@ -757,6 +778,8 @@ const AdminBrands = () => {
         onUploaded={(result: MediaUploadResult) => {
           if (uploadTarget === null) return;
           const { idx, field } = uploadTarget;
+          const prevVariants = field === "image" ? items[idx]?.variants || [] : items[idx]?.detail?.heroVariants || [];
+          const prevPaths = prevVariants.map((v) => v.path || v.fileName).filter(Boolean) as string[];
           const mainVariant = result.variants.find((v) => v.key === "main") ?? result.variants[0];
           const imagePath = mainVariant?.path || mainVariant?.fileName || items[idx]?.image;
           if (field === "image") {
@@ -773,6 +796,7 @@ const AdminBrands = () => {
               return next;
             });
           }
+          setPendingDeletes((prev) => [...prev, ...prevPaths]);
           setUploadTarget(null);
         }}
       />

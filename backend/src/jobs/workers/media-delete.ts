@@ -8,7 +8,7 @@ import { getDb } from "../../db/mongo";
 export const mediaDeleteWorker = new Worker(
   mediaDeleteQueue.name,
   async (job) => {
-    const { id, paths } = job.data as { id: string; paths: string[] };
+    const { id, paths } = job.data as { id?: string; paths: string[] };
     for (const filePath of paths ?? []) {
       try {
         await fs.unlink(filePath);
@@ -22,9 +22,11 @@ export const mediaDeleteWorker = new Worker(
       }
     }
 
-    const db = await getDb();
-    await db.collection("media").updateOne({ _id: new ObjectId(id) }, { $set: { status: "deleted", deletedAt: new Date() } });
-    job.log(`Media ${id} marked deleted`);
+    if (id && ObjectId.isValid(id)) {
+      const db = await getDb();
+      await db.collection("media").updateOne({ _id: new ObjectId(id) }, { $set: { status: "deleted", deletedAt: new Date() } });
+      job.log(`Media ${id} marked deleted`);
+    }
   },
   { connection: getRedis() }
 );
