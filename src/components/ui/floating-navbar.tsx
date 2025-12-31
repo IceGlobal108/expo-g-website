@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { Menu, X, LogIn, UserCircle2 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { navItems as defaultNavItems } from "@/data/expo-data";
+import { Button } from "@/components/ui/button";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 interface NavItem {
   name: string;
@@ -306,7 +308,6 @@ export const FloatingNavbar = ({ navItems = defaultNavItems, className }: Floati
                 className="pt-4"
               >
                 <div className="flex flex-col gap-3">
-                  <ThemeSwitcher />
                   <Button variant="hero" size="lg" className="w-full">
                     Partner With Us
                   </Button>
